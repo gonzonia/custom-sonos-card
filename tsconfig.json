@@ -3,12 +3,13 @@
     "target": "es2017",
     "module": "esnext",
     "moduleResolution": "node",
-    "include": ["./src/**/*","./test/**/*"],
-
     "lib": [
       "es2021",
       "dom",
       "dom.iterable"
+    ],
+    "types": [
+      "node"
     ],
     "noEmit": true,
     "noUnusedParameters": true,
@@ -16,9 +17,18 @@
     "noFallthroughCasesInSwitch": true,
     "strict": true,
     "noImplicitAny": true,
-    "skipLibCheck": false,
+    "skipLibCheck": true,
     "resolveJsonModule": true,
     "experimentalDecorators": true,
     "noUnusedLocals": true,
-  }
+    "esModuleInterop": true
+  },
+  "include": [
+    "./src/**/*",
+    "./test/**/*",
+    "./scripts/deploy.ts"
+  ],
+  "exclude": [
+    "./src/upstream/**/*"
+  ]
 }
