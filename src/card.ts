@@ -14,7 +14,7 @@ import { when } from 'lit/directives/when.js';
 import { styleMap } from 'lit-html/directives/style-map.js';
 import { cardDoesNotContainAllSections, getHeight, getWidth, isSonosCard } from './utils/utils';
 
-const { GROUPING, GROUPS, FAVORITES, PLAYER, VOLUMES, QUEUE } = Section;
+const { GROUPING, GROUPS, MEDIA_BROWSER, PLAYER, VOLUMES, QUEUE } = Section;
 const TITLE_HEIGHT = 2;
 const FOOTER_HEIGHT = 5;
 
@@ -68,16 +68,15 @@ export class Card extends LitElement {
                         @active-player=${this.activePlayerListener}
                       ></sonos-grouping>`,
                   ],
+                  [VOLUMES, () => html` <sonos-volumes .store=${this.store}></sonos-volumes>`],
                   [
-                    FAVORITES,
-                    () => html`
-                      <sonos-favorites
+                    MEDIA_BROWSER,
+                    () =>
+                      html`<sonos-media-browser
                         .store=${this.store}
                         @item-selected=${this.onMediaItemSelected}
-                      ></sonos-favorites>
-                    `,
+                      ></sonos-media-browser>`,
                   ],
-                  [VOLUMES, () => html` <sonos-volumes .store=${this.store}></sonos-volumes>`],
                   [
                     QUEUE,
                     () =>
@@ -233,8 +232,8 @@ export class Card extends LitElement {
     } else if (sections) {
       this.section = sections.includes(PLAYER)
         ? PLAYER
-        : sections.includes(FAVORITES)
-          ? FAVORITES
+        : sections.includes(MEDIA_BROWSER)
+          ? MEDIA_BROWSER
           : sections.includes(GROUPS)
             ? GROUPS
             : sections.includes(GROUPING)
@@ -246,8 +245,9 @@ export class Card extends LitElement {
       this.section = PLAYER;
     }
 
-    newConfig.favorites = newConfig.favorites ?? {};
-    newConfig.favorites.itemsPerRow = newConfig.favorites.itemsPerRow || 4;
+    newConfig.mediaBrowser = newConfig.mediaBrowser ?? {};
+    newConfig.mediaBrowser.favorites = newConfig.mediaBrowser.favorites ?? {};
+    newConfig.mediaBrowser.itemsPerRow = newConfig.mediaBrowser.itemsPerRow || 4;
     // support custom:auto-entities
     if (newConfig.entities?.length && newConfig.entities[0].entity) {
       newConfig.entities = newConfig.entities.map((entity: { entity: string }) => entity.entity);

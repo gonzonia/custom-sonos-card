@@ -9,8 +9,8 @@ declare global {
 }
 
 export enum Section {
-  FAVORITES = 'favorites',
   GROUPS = 'groups',
+  MEDIA_BROWSER = 'media browser',
   PLAYER = 'player',
   GROUPING = 'grouping',
   VOLUMES = 'volumes',
@@ -29,9 +29,9 @@ export interface GroupingButtonIcons {
 
 interface SectionButtonIcons {
   player?: string;
-  favorites?: string;
   groups?: string;
   grouping?: string;
+  mediaBrowser?: string;
   volumes?: string;
   queue?: string;
 }
@@ -86,20 +86,23 @@ export interface FavoritesConfig {
   customFavorites?: CustomFavorites;
   customThumbnails?: CustomFavoriteThumbnails;
   customThumbnailsIfMissing?: CustomFavoriteThumbnails;
-  hideBrowseMediaButton?: boolean;
-  hideHeader?: boolean;
+  exclude?: string[];
   hideTitleForThumbnailIcons?: boolean;
   iconBorder?: string;
   iconPadding?: number;
   iconTitleBackgroundColor?: string;
   iconTitleColor?: string;
-  itemsPerRow?: number;
   numberToShow?: number;
-  replaceHttpWithHttpsForThumbnails?: boolean;
   sortByType?: boolean;
   title?: string;
-  exclude?: string[];
   topItems?: string[];
+}
+
+export interface MediaBrowserConfig {
+  favorites?: FavoritesConfig;
+  hideHeader?: boolean;
+  itemsPerRow?: number;
+  onlyFavorites?: boolean;
 }
 
 export interface GroupsConfig {
@@ -174,11 +177,11 @@ export interface CardConfig extends LovelaceCardConfig {
   widthPercentage?: number;
   // Section configs
   player?: PlayerConfig;
-  favorites?: FavoritesConfig;
   groups?: GroupsConfig;
   grouping?: GroupingConfig;
   volumes?: VolumesConfig;
   queue?: QueueConfig;
+  mediaBrowser?: MediaBrowserConfig;
 }
 
 export interface MediaArtworkOverride {
@@ -205,16 +208,10 @@ export interface CustomFavoriteThumbnails {
   [title: string]: string;
 }
 
-export interface MediaPlayerItem {
-  can_play?: boolean;
-  can_expand?: boolean;
+import { MediaPlayerItem as UpstreamMediaPlayerItem } from './upstream/data/media-player';
+
+export interface MediaPlayerItem extends Partial<UpstreamMediaPlayerItem> {
   title: string;
-  thumbnail?: string;
-  children?: MediaPlayerItem[];
-  children_media_class?: string;
-  media_class?: string;
-  media_content_type?: string;
-  media_content_id?: string;
   favoriteType?: string;
 }
 
