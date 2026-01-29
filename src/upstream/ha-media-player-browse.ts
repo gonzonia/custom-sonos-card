@@ -119,6 +119,13 @@ export class HaMediaPlayerBrowse extends LitElement {
     this.updateComplete.then(() => this._attachResizeObserver());
   }
 
+  public getPlayableChildren(): MediaPlayerItem[] {
+    if (!this._currentItem?.children) {
+      return [];
+    }
+    return this._currentItem.children.filter((child) => child.can_play);
+  }
+
   public disconnectedCallback(): void {
     super.disconnectedCallback();
     if (this._resizeObserver) {

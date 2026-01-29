@@ -1,5 +1,5 @@
-import { css, html, LitElement } from 'lit';
-import { property, state } from 'lit/decorators.js';
+import { css, html, LitElement, nothing } from 'lit';
+import { property, state, query } from 'lit/decorators.js';
 import {
   mdiAlphaABoxOutline,
   mdiArrowLeft,
@@ -9,11 +9,13 @@ import {
   mdiFolderStarOutline,
   mdiGrid,
   mdiListBoxOutline,
+  mdiPlay,
   mdiPlayBoxMultiple,
   mdiStar,
 } from '@mdi/js';
 import Store from '../model/store';
 import '../upstream/ha-media-player-browse';
+import { HaMediaPlayerBrowse } from '../upstream/ha-media-player-browse';
 import '../components/favorites-list';
 import '../components/favorites-icons';
 import { MEDIA_ITEM_SELECTED } from '../constants';
@@ -47,6 +49,9 @@ export class MediaBrowser extends LitElement {
   @state() private isCurrentPathStart = false;
   @state() private layout: LayoutType = 'auto';
   @state() private view: ViewType = 'favorites';
+  @state() private playableChildrenCount = 0;
+  @state() private playAllLoading = false;
+  @query('sonos-ha-media-player-browse') private mediaBrowser?: HaMediaPlayerBrowse;
 
   connectedCallback() {
     super.connectedCallback();
@@ -224,7 +229,7 @@ export class MediaBrowser extends LitElement {
   private renderShortcutButton(shortcut: MediaBrowserShortcut | undefined) {
     // Only show if all required properties are provided
     if (!shortcut?.media_content_id || !shortcut?.media_content_type || !shortcut?.name) {
-      return '';
+      return nothing;
     }
     const icon = shortcut.icon ?? mdiBookmark;
     const isActive = this.isInShortcutFolder(shortcut);
@@ -235,7 +240,7 @@ export class MediaBrowser extends LitElement {
         title=${shortcut.name}
         .path=${icon.startsWith('mdi:') ? undefined : icon}
       >
-        ${icon.startsWith('mdi:') ? html`<ha-icon .icon=${icon}></ha-icon>` : ''}
+        ${icon.startsWith('mdi:') ? html`<ha-icon .icon=${icon}></ha-icon>` : nothing}
       </ha-icon-button>
     `;
   }
@@ -365,6 +370,7 @@ export class MediaBrowser extends LitElement {
     const shortcut = mediaBrowserConfig.shortcut;
 
     return html`
+      ${this.playAllLoading ? html`<div class="loading-overlay"><div class="loading-spinner"></div></div>` : nothing}
       ${hideHeader
         ? ''
         : html`<div class="header">
@@ -372,7 +378,7 @@ export class MediaBrowser extends LitElement {
               ? html`<ha-icon-button .path=${mdiArrowLeft} @click=${this.goBack}></ha-icon-button>`
               : html`<div class="spacer"></div>`}
             <span class="title">${title}</span>
-            ${this.renderShortcutButton(shortcut)}
+            ${this.renderPlayAllButton()}${this.renderShortcutButton(shortcut)}
             <ha-icon-button .path=${mdiStar} @click=${this.goToFavorites} title="Favorites"></ha-icon-button>
             <ha-icon-button
               class=${this.isCurrentPathStart ? 'startpath-active' : ''}
@@ -393,6 +399,50 @@ export class MediaBrowser extends LitElement {
         @media-browsed=${this.onMediaBrowsed}
       ></sonos-ha-media-player-browse>
     `;
+  }
+
+  private renderPlayAllButton() {
+    if (this.playableChildrenCount === 0 || this.playAllLoading) {
+      return nothing;
+    }
+    return html`<ha-icon-button
+      .path=${mdiPlay}
+      @click=${this.playAll}
+      title="Play all (${this.playableChildrenCount} tracks)"
+    ></ha-icon-button>`;
+  }
+
+  private async playAll() {
+    const children = this.mediaBrowser?.getPlayableChildren() || [];
+    if (children.length === 0) {
+      return;
+    }
+    this.playAllLoading = true;
+    try {
+      const player = this.store.activePlayer;
+      // Play first item (replaces queue)
+      await this.store.hass.callService('media_player', 'play_media', {
+        entity_id: player.id,
+        media_content_id: children[0].media_content_id,
+        media_content_type: children[0].media_content_type,
+        enqueue: 'replace',
+      });
+      // Add remaining items to queue in parallel
+      const addPromises = children.slice(1).map((child) =>
+        this.store.hass.callService('media_player', 'play_media', {
+          entity_id: player.id,
+          media_content_id: child.media_content_id,
+          media_content_type: child.media_content_type,
+          enqueue: 'add',
+        }),
+      );
+      await Promise.all(addPromises);
+      this.dispatchEvent(customEvent(MEDIA_ITEM_SELECTED, children[0]));
+    } catch (e) {
+      console.error('Failed to play all:', e);
+    } finally {
+      this.playAllLoading = false;
+    }
   }
 
   private goBack = () => {
@@ -416,6 +466,10 @@ export class MediaBrowser extends LitElement {
     const isRoot = this.navigateIds.length === 1 && !this.navigateIds[0].media_content_id;
     const lastItem = this.navigateIds[this.navigateIds.length - 1];
     this.currentTitle = isRoot ? '' : lastItem?.title || event.detail.current?.title || '';
+    // Count playable children - will be updated after render when mediaBrowser is available
+    this.playableChildrenCount = (event.detail.current?.children || []).filter(
+      (c: MediaPlayerItem) => c.can_play,
+    ).length;
     this.saveCurrentState();
     this.updateIsCurrentPathStart();
   };
@@ -459,6 +513,28 @@ export class MediaBrowser extends LitElement {
       }
       ha-icon-button.shortcut-active {
         color: var(--accent-color);
+      }
+      .loading-overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
+      }
+      .loading-spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid var(--secondary-text-color);
+        border-top-color: transparent;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
       }
       sonos-ha-media-player-browse,
       sonos-favorites-icons,
