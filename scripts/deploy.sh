@@ -33,7 +33,6 @@ NC='\033[0m' # No Color
 
 echo -e "${YELLOW}Building...${NC}"
 cd "$PROJECT_ROOT"
-npm run build
 
 echo -e "${YELLOW}Deploying files to HA server...${NC}"
 scp "$PROJECT_ROOT/dist/custom-sonos-card.js" "$HA_SSH_USER@$HA_SSH_HOST:$HA_SSH_PATH/custom-sonos-card/"

@@ -153,6 +153,9 @@ class Group extends LitElement {
       .compact div {
         margin: 0.1em;
       }
+      sonos-playing-bars {
+        margin-left: 0.5rem;
+      }
     `;
   }
 }

@@ -476,7 +476,7 @@ export class HaMediaPlayerBrowse extends LitElement {
                   : this.hass.localize('ui.components.media-browser.no_items')}
                           </div>
                         `
-              : this.itemsPerRow !== 4 // 4 is default, handled by lit-virtualizer below
+              : this.itemsPerRow // Use fixed grid when itemsPerRow is specified
                 ? html`
                     <div class="children flex-grid" style="--items-per-row: ${this.itemsPerRow}">
                       ${children.map((child) => this._renderGridItem(child))}

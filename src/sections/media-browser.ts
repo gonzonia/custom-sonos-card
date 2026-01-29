@@ -49,7 +49,6 @@ export class MediaBrowser extends LitElement {
   @state() private isCurrentPathStart = false;
   @state() private layout: LayoutType = 'auto';
   @state() private view: ViewType = 'favorites';
-  @state() private playableChildrenCount = 0;
   @state() private playAllLoading = false;
   @query('sonos-ha-media-player-browse') private mediaBrowser?: HaMediaPlayerBrowse;
 
@@ -319,7 +318,8 @@ export class MediaBrowser extends LitElement {
     const favoritesConfig: FavoritesConfig = this.store.config.mediaBrowser?.favorites ?? {};
     const player = this.store.activePlayer;
     let favorites = await this.store.mediaBrowseService.getFavorites(player);
-    favorites.sort((a, b) => this.sortFavorites(a.title, b.title, favoritesConfig));
+    const topItems = favoritesConfig.topItems ?? [];
+    favorites.sort((a, b) => this.sortFavorites(a.title, b.title, topItems));
     favorites = [
       ...(favoritesConfig.customFavorites?.[player.id]?.map(MediaBrowser.createFavorite) || []),
       ...(favoritesConfig.customFavorites?.all?.map(MediaBrowser.createFavorite) || []),
@@ -328,8 +328,7 @@ export class MediaBrowser extends LitElement {
     return favoritesConfig.numberToShow ? favorites.slice(0, favoritesConfig.numberToShow) : favorites;
   }
 
-  private sortFavorites(a: string, b: string, config: FavoritesConfig) {
-    const topItems = config.topItems ?? [];
+  private sortFavorites(a: string, b: string, topItems: string[]) {
     const aIndex = indexOfWithoutSpecialChars(topItems, a);
     const bIndex = indexOfWithoutSpecialChars(topItems, b);
     if (aIndex > -1 && bIndex > -1) {
@@ -402,13 +401,14 @@ export class MediaBrowser extends LitElement {
   }
 
   private renderPlayAllButton() {
-    if (this.playableChildrenCount === 0 || this.playAllLoading) {
+    const playableCount = this.mediaBrowser?.getPlayableChildren().length ?? 0;
+    if (playableCount === 0 || this.playAllLoading) {
       return nothing;
     }
     return html`<ha-icon-button
       .path=${mdiPlay}
       @click=${this.playAll}
-      title="Play all (${this.playableChildrenCount} tracks)"
+      title="Play all (${playableCount} tracks)"
     ></ha-icon-button>`;
   }
 
@@ -466,10 +466,6 @@ export class MediaBrowser extends LitElement {
     const isRoot = this.navigateIds.length === 1 && !this.navigateIds[0].media_content_id;
     const lastItem = this.navigateIds[this.navigateIds.length - 1];
     this.currentTitle = isRoot ? '' : lastItem?.title || event.detail.current?.title || '';
-    // Count playable children - will be updated after render when mediaBrowser is available
-    this.playableChildrenCount = (event.detail.current?.children || []).filter(
-      (c: MediaPlayerItem) => c.can_play,
-    ).length;
     this.saveCurrentState();
     this.updateIsCurrentPathStart();
   };
