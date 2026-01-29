@@ -42,15 +42,30 @@ When adding a new configuration option, update ALL of the following:
   - Study the README.md and the create_dist script for more information. 
 
 # Upstream folder
-- The `src/upstream/` folder contains code synced from Home Assistant frontend via `scripts/sync-upstream.sh`.
-- **AVOID modifying files in `src/upstream/` directly** - changes require regenerating the patch file.
-- Instead, extract custom logic to `src/utils/` or other folders outside upstream.
-- Pass data/callbacks from the component that uses upstream code (e.g., `media-browser.ts` → `ha-media-player-browse.ts`).
-- If upstream changes ARE necessary, regenerate the patch file:
-  ```bash
-  curl -sf "https://raw.githubusercontent.com/home-assistant/frontend/[VERSION]/src/components/media-player/ha-media-player-browse.ts" -o /tmp/upstream.ts
-  diff -u /tmp/upstream.ts src/upstream/ha-media-player-browse.ts > patches/ha-media-player-browse.patch
-  ```
+- The `src/upstream/` folder contains code adapted from Home Assistant frontend's media browser.
+- Current upstream version tracked in `src/upstream/.upstream-version`
+- **AVOID modifying files in `src/upstream/` directly** - extract custom logic to `src/utils/` instead.
+- Key customizations in `ha-media-player-browse.ts`:
+  - `@ts-nocheck` at top
+  - Custom element renamed to `sonos-ha-media-player-browse`
+  - `itemsPerRow` property for grid layout control
+  - `filterOutIgnoredMediaSources()` wrapper (from `media-browse-utils.ts`)
+  - Smaller play buttons (40px vs 70px)
+  - Import paths rewritten to local stubs
+
+## Checking for upstream updates
+1. Check latest HA frontend release: https://github.com/home-assistant/frontend/releases
+2. Download and diff each upstream file:
+   ```bash
+   # Files to check (old version → new version):
+   curl -sf "https://raw.githubusercontent.com/home-assistant/frontend/[OLD]/src/components/media-player/ha-media-player-browse.ts" -o /tmp/old.ts
+   curl -sf "https://raw.githubusercontent.com/home-assistant/frontend/[NEW]/src/components/media-player/ha-media-player-browse.ts" -o /tmp/new.ts
+   diff /tmp/old.ts /tmp/new.ts
+   
+   # Also check: ha-browse-media-manual.ts, ha-browse-media-tts.ts, data/media-player.ts, data/media_source.ts, common/string/slugify.ts
+   ```
+3. Review diffs and manually apply relevant changes to our local customized versions
+4. Update `src/upstream/.upstream-version` with the new version and review notes
 
 # Deployment
 - ALWAYS run `npm run deploy` after implementing any code changes (it builds automatically, don't build separately)
