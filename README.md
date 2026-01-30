@@ -363,6 +363,7 @@ grouping:
   disableMainSpeakers: true # default is false. Disables (greys out) any speaker that is currently the main speaker of a multi-speaker group.
   dontSortMembersOnTop: true # default is false. Will not sort members of the selected player on top of the list in the grouping section.
   hideUngroupAllButtons: true # default is false. Hides the join all/unjoin all buttons in the grouping section.
+  hideVolumes: true # default is false. Hides the volume sliders in the grouping section.
   skipApplyButton: true # default is false. Will skip the apply button when grouping.
 ```
 

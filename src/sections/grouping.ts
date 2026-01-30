@@ -68,13 +68,15 @@ export class Grouping extends LitElement {
                 ></ha-icon>
                 <div class="name-and-volume">
                   <span class="name">${item.name}</span>
-                  <sonos-volume
-                    class="volume"
-                    .store=${this.store}
-                    .player=${item.player}
-                    .updateMembers=${false}
-                    .slim=${true}
-                  ></sonos-volume>
+                  ${this.groupingConfig.hideVolumes
+                    ? nothing
+                    : html`<sonos-volume
+                        class="volume"
+                        .store=${this.store}
+                        .player=${item.player}
+                        .updateMembers=${false}
+                        .slim=${true}
+                      ></sonos-volume>`}
                 </div>
               </div>
             `;
@@ -253,9 +255,12 @@ export class Grouping extends LitElement {
     }
     if (!this.groupingConfig.dontSortMembersOnTop) {
       groupingItems.sort((a, b) => {
-        if ((a.isMain && !b.isMain) || (a.isSelected && !a.isModified && !b.isSelected)) {
-          return -1;
-        }
+        // Main player always first
+        if (a.isMain) return -1;
+        if (b.isMain) return 1;
+        // Currently joined members stay at top (regardless of pending changes)
+        if (a.currentlyJoined && !b.currentlyJoined) return -1;
+        if (b.currentlyJoined && !a.currentlyJoined) return 1;
         return 0;
       });
     }
