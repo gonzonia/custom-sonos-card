@@ -33,7 +33,6 @@ class PlayingBars extends LitElement {
       :host {
         display: flex;
         align-items: center;
-        margin-left: 0.5rem;
       }
 
       .bars {
