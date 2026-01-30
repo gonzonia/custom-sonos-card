@@ -11,6 +11,7 @@ export const queueStyles = css`
     flex-direction: column;
     height: 100%;
     outline: none;
+    position: relative;
   }
   .header {
     display: flex;
@@ -33,8 +34,13 @@ export const queueStyles = css`
   }
   .list {
     overflow: auto;
+    position: relative;
+    flex: 1;
     --mdc-icon-button-size: 1.5em;
     --mdc-icon-size: 1em;
+  }
+  .list.search-active {
+    padding-top: 3rem;
   }
   ha-icon-button[selected] {
     color: var(--accent-color);
@@ -43,6 +49,33 @@ export const queueStyles = css`
     display: flex;
     justify-content: center;
     padding: 2rem;
+  }
+  .delete-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+  }
+  .delete-overlay-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    padding: 2rem;
+    text-align: center;
+  }
+  .delete-progress-text {
+    font-size: 1.2rem;
+    color: var(--primary-text-color, #fff);
+  }
+  .accent {
+    --control-button-background-color: var(--accent-color);
   }
   .delete-all-btn {
     display: inline-flex;

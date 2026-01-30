@@ -256,11 +256,19 @@ export class Grouping extends LitElement {
     if (!this.groupingConfig.dontSortMembersOnTop) {
       groupingItems.sort((a, b) => {
         // Main player always first
-        if (a.isMain) return -1;
-        if (b.isMain) return 1;
+        if (a.isMain) {
+          return -1;
+        }
+        if (b.isMain) {
+          return 1;
+        }
         // Currently joined members stay at top (regardless of pending changes)
-        if (a.currentlyJoined && !b.currentlyJoined) return -1;
-        if (b.currentlyJoined && !a.currentlyJoined) return 1;
+        if (a.currentlyJoined && !b.currentlyJoined) {
+          return -1;
+        }
+        if (b.currentlyJoined && !a.currentlyJoined) {
+          return 1;
+        }
         return 0;
       });
     }

@@ -18,6 +18,7 @@
 - Dependencies should be pinned, and kept up to date with dependabot.
 - Make sure to use latest, stable versions of dependencies unless there is a specific reason not to. Those reasons must be documented in an ADR.md file.
 - Keep types clean in normal code, extract type definitions to a types.ts if they are complex or used in multiple places.
+- Use conventional commits for commit messages.
 
 # Editor Schema
 - Config options in the advanced editor are organized by section (Common, Player, Favorites, Groups, Grouping, Volumes, Queue).
