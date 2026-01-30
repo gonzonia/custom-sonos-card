@@ -50,6 +50,7 @@ export class MediaBrowser extends LitElement {
   @state() private layout: LayoutType = 'auto';
   @state() private view: ViewType = 'favorites';
   @state() private playAllLoading = false;
+  @state() private mediaLoaded = false;
   @query('sonos-ha-media-player-browse') private mediaBrowser?: HaMediaPlayerBrowse;
 
   connectedCallback() {
@@ -466,6 +467,8 @@ export class MediaBrowser extends LitElement {
     const isRoot = this.navigateIds.length === 1 && !this.navigateIds[0].media_content_id;
     const lastItem = this.navigateIds[this.navigateIds.length - 1];
     this.currentTitle = isRoot ? '' : lastItem?.title || event.detail.current?.title || '';
+    // Toggle to trigger re-render so renderPlayAllButton can access updated mediaBrowser
+    this.mediaLoaded = !this.mediaLoaded;
     this.saveCurrentState();
     this.updateIsCurrentPathStart();
   };
