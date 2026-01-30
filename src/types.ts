@@ -138,6 +138,7 @@ export interface GroupingConfig {
   dontSortMembersOnTop?: boolean;
   dontSwitchPlayer?: boolean;
   hideUngroupAllButtons?: boolean;
+  hideVolumes?: boolean;
   skipApplyButton?: boolean;
   title?: string;
 }

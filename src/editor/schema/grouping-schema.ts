@@ -35,6 +35,10 @@ export const GROUPING_SCHEMA = [
     selector: { boolean: {} },
   },
   {
+    name: 'hideVolumes',
+    selector: { boolean: {} },
+  },
+  {
     name: 'skipApplyButton',
     selector: { boolean: {} },
   },
