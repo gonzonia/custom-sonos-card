@@ -4,15 +4,15 @@ export const queueSearchStyles = css`
   :host {
     display: contents;
   }
-  .search-bar {
+  .search-row {
     display: flex;
     align-items: center;
     position: absolute;
     top: 100%;
     left: 0;
     right: 0;
-    background: var(--card-background-color, #fff);
     padding: 0.5rem;
+    background: var(--card-background-color, #1c1c1c);
     border-bottom: 1px solid var(--divider-color, #e0e0e0);
     z-index: 10;
   }
@@ -38,7 +38,7 @@ export const queueSearchStyles = css`
     color: var(--secondary-text-color, #666);
     white-space: nowrap;
   }
-  .search-bar ha-icon-button {
+  .search-row ha-icon-button {
     --mdc-icon-button-size: 2rem;
     --mdc-icon-size: 1.2rem;
   }

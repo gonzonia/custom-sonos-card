@@ -1,12 +1,13 @@
 import { html, LitElement, nothing, PropertyValues } from 'lit';
 import { property, state, query } from 'lit/decorators.js';
-import { mdiMagnify, mdiChevronUp, mdiChevronDown, mdiClose } from '@mdi/js';
+import { mdiMagnify, mdiChevronUp, mdiChevronDown, mdiClose, mdiCheckAll } from '@mdi/js';
 import { QueueSearchMatch } from '../types/queue-search';
 import { queueSearchStyles } from './queue-search.styles';
 
 export class QueueSearch extends LitElement {
   @property({ attribute: false }) items: { title: string }[] = [];
-  @state() private expanded = false;
+  @property({ type: Boolean }) deleteMode = false;
+  @state() expanded = false;
   @state() private searchText = '';
   @state() private matchIndices: number[] = [];
   @state() private currentMatchIndex = 0;
@@ -22,14 +23,14 @@ export class QueueSearch extends LitElement {
   render() {
     const hasNoMatch = this.searchText.length > 0 && this.matchIndices.length === 0;
     return html`
-      <ha-icon-button .path=${mdiMagnify} @click=${this.toggleSearch}></ha-icon-button>
+      <ha-icon-button .path=${mdiMagnify} @click=${this.toggleSearch} ?selected=${this.expanded}></ha-icon-button>
       ${this.expanded ? this.renderSearchBar(hasNoMatch) : nothing}
     `;
   }
 
   private renderSearchBar(hasNoMatch: boolean) {
     return html`
-      <div class="search-bar">
+      <div class="search-row">
         <input
           type="text"
           placeholder="Search queue..."
@@ -49,6 +50,13 @@ export class QueueSearch extends LitElement {
       <span class="match-info">${this.currentMatchIndex + 1}/${this.matchIndices.length}</span>
       <ha-icon-button .path=${mdiChevronUp} @click=${this.previousMatch}></ha-icon-button>
       <ha-icon-button .path=${mdiChevronDown} @click=${this.nextMatch}></ha-icon-button>
+      ${this.deleteMode
+        ? html`<ha-icon-button
+            .path=${mdiCheckAll}
+            @click=${this.selectAllMatches}
+            title="Select all matches"
+          ></ha-icon-button>`
+        : nothing}
     `;
   }
 
@@ -59,6 +67,7 @@ export class QueueSearch extends LitElement {
     } else {
       this.clearSearch();
     }
+    this.dispatchEvent(new CustomEvent('queue-search-expanded', { detail: { expanded: this.expanded } }));
   }
 
   private onSearchInput(e: Event) {
@@ -113,6 +122,7 @@ export class QueueSearch extends LitElement {
           index,
           currentMatch: this.currentMatchIndex + 1,
           totalMatches: this.matchIndices.length,
+          matchIndices: this.matchIndices,
         },
       }),
     );
@@ -150,6 +160,12 @@ export class QueueSearch extends LitElement {
     this.lastHighlightedIndex = -1;
     this.expanded = false;
     this.dispatchMatchEvent(-1);
+  }
+
+  private selectAllMatches() {
+    if (this.matchIndices.length > 0) {
+      this.dispatchEvent(new CustomEvent('queue-search-select-all', { detail: { indices: this.matchIndices } }));
+    }
   }
 
   static get styles() {
