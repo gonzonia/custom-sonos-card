@@ -19,7 +19,8 @@ export function getSpeakerList(mainPlayer: MediaPlayer, predefinedGroups: Predef
       return found.name;
     }
   }
-  return mainPlayer.members.map((member) => member.name).join(' + ');
+  const otherMembers = mainPlayer.members.filter((member) => member.id !== mainPlayer.id);
+  return [mainPlayer.name, ...otherMembers.map((member) => member.name)].join(' + ');
 }
 
 export function dispatchActivePlayerId(playerId: string, config: CardConfig, element: Element) {
