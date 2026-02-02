@@ -4,6 +4,9 @@ export const queueSearchStyles = css`
   :host {
     display: contents;
   }
+  :host > ha-icon-button[selected] {
+    color: var(--accent-color);
+  }
   .search-row {
     display: flex;
     align-items: center;
@@ -41,5 +44,8 @@ export const queueSearchStyles = css`
   .search-row ha-icon-button {
     --mdc-icon-button-size: 2rem;
     --mdc-icon-size: 1.2rem;
+  }
+  .search-row ha-icon-button[selected] {
+    color: var(--accent-color);
   }
 `;

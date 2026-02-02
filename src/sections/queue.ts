@@ -18,6 +18,8 @@ export class Queue extends LitElement {
   @state() private searchExpanded = false;
   @state() private searchHighlightIndex = -1;
   @state() private searchMatchIndices: number[] = [];
+  @state() private showOnlyMatches = false;
+  @state() private shownIndices: number[] = [];
   @state() private selectedIndices = new Set<number>();
   @state() private queueItems: MediaPlayerItem[] = [];
   @state() private loading = true;
@@ -76,6 +78,9 @@ export class Queue extends LitElement {
 
   private renderQueue(selected: number) {
     const hasSelection = this.selectedIndices.size > 0;
+    // If showOnlyMatches is enabled, filter queueItems and map indices
+    const displayItems = this.showOnlyMatches ? this.shownIndices.map((i) => this.queueItems[i]) : this.queueItems;
+    const indexMap = this.showOnlyMatches ? this.shownIndices : null;
     return html`
       <div class="header">
         <div class="title">
@@ -90,6 +95,7 @@ export class Queue extends LitElement {
             @queue-search-match=${this.onSearchMatch}
             @queue-search-select-all=${this.onSelectAllMatches}
             @queue-search-expanded=${this.onSearchExpanded}
+            @queue-search-show-only-matches=${this.onShowOnlyMatches}
           ></sonos-queue-search>
           ${this.deleteMode
             ? html`
@@ -127,11 +133,13 @@ export class Queue extends LitElement {
         ${this.loading
           ? html`<div class="loading"><ha-spinner></ha-spinner></div>`
           : html`<mwc-list multi>
-              ${this.queueItems.map((item, index) => {
-                const isSelected = selected >= 0 && selected === index;
+              ${displayItems.map((item, index) => {
+                // Map index to real index in queueItems if filtering
+                const realIndex = indexMap ? indexMap[index] : index;
+                const isSelected = selected >= 0 && realIndex === selected;
                 const isPlaying = isSelected && this.activePlayer.isPlaying();
-                const isSearchHighlight = this.searchHighlightIndex === index;
-                const isChecked = this.selectedIndices.has(index);
+                const isSearchHighlight = this.searchHighlightIndex === realIndex;
+                const isChecked = this.selectedIndices.has(realIndex);
                 return html`
                   <sonos-media-row
                     @click=${() => this.onMediaItemClick(index)}
@@ -141,7 +149,7 @@ export class Queue extends LitElement {
                     .searchHighlight=${isSearchHighlight}
                     .showCheckbox=${this.deleteMode}
                     .checked=${isChecked}
-                    @checkbox-change=${(e: CustomEvent) => this.onCheckboxChange(index, e.detail.checked)}
+                    @checkbox-change=${(e: CustomEvent) => this.onCheckboxChange(realIndex, e.detail.checked)}
                     .store=${this.store}
                   ></sonos-media-row>
                 `;
@@ -154,6 +162,11 @@ export class Queue extends LitElement {
   private onSearchMatch(e: CustomEvent<QueueSearchMatch>) {
     this.searchHighlightIndex = e.detail.index;
     this.searchMatchIndices = e.detail.matchIndices ?? [];
+  }
+
+  private onShowOnlyMatches(e: CustomEvent<{ showOnlyMatches: boolean; shownIndices: number[] }>) {
+    this.showOnlyMatches = e.detail.showOnlyMatches;
+    this.shownIndices = e.detail.shownIndices;
   }
 
   private onSearchExpanded(e: CustomEvent<{ expanded: boolean }>) {
@@ -175,8 +188,12 @@ export class Queue extends LitElement {
   }
 
   private onMediaItemClick = async (index: number) => {
+    let realIndex = index;
+    if (this.showOnlyMatches && this.shownIndices.length > 0) {
+      realIndex = this.shownIndices[index];
+    }
     if (!this.deleteMode) {
-      await this.store.hassService.playQueue(this.activePlayer, index);
+      await this.store.hassService.playQueue(this.activePlayer, realIndex);
       this.dispatchEvent(customEvent(MEDIA_ITEM_SELECTED));
     }
   };
