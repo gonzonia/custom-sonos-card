@@ -1,6 +1,6 @@
 import { html, LitElement, nothing, PropertyValues } from 'lit';
 import { property, state, query } from 'lit/decorators.js';
-import { mdiMagnify, mdiChevronUp, mdiChevronDown, mdiClose, mdiCheckAll } from '@mdi/js';
+import { mdiMagnify, mdiChevronUp, mdiChevronDown, mdiCheckAll, mdiEyeCheck } from '@mdi/js';
 import { QueueSearchMatch } from '../types/queue-search';
 import { queueSearchStyles } from './queue-search.styles';
 
@@ -12,11 +12,73 @@ export class QueueSearch extends LitElement {
   @state() private matchIndices: number[] = [];
   @state() private currentMatchIndex = 0;
   @state() private lastHighlightedIndex = -1;
+  @state() private showOnlyMatches = false;
+  @state() private shownIndices: number[] = [];
   @query('input') private input?: HTMLInputElement;
+  private readonly LOCAL_STORAGE_KEY = 'sonos-queue-search-state';
+  private needsStateRestoration = false;
 
+  connectedCallback(): void {
+    super.connectedCallback();
+    const saved = localStorage.getItem(this.LOCAL_STORAGE_KEY);
+    if (saved) {
+      try {
+        const state = JSON.parse(saved);
+        this.expanded = !!state.expanded;
+        this.searchText = state.searchText || '';
+        this.showOnlyMatches = !!state.showOnlyMatches;
+        this.needsStateRestoration = true;
+      } catch {
+        // Ignore parse errors
+      }
+    }
+  }
+
+  private saveStateToLocalStorage() {
+    const state = {
+      expanded: this.expanded,
+      searchText: this.searchText,
+      showOnlyMatches: this.showOnlyMatches,
+    };
+    localStorage.setItem(this.LOCAL_STORAGE_KEY, JSON.stringify(state));
+  }
   protected willUpdate(changedProperties: PropertyValues): void {
-    if (changedProperties.has('items') && this.searchText) {
+    if (changedProperties.has('items') && this.searchText && !this.needsStateRestoration) {
       this.findMatches(false);
+      if (this.showOnlyMatches) {
+        this.updateShownIndices();
+        // Notify parent of updated shownIndices when items change
+        this.dispatchEvent(
+          new CustomEvent('queue-search-show-only-matches', {
+            detail: { showOnlyMatches: this.showOnlyMatches, shownIndices: this.shownIndices },
+          }),
+        );
+      }
+    }
+  }
+
+  protected updated(changedProperties: PropertyValues): void {
+    super.updated(changedProperties);
+
+    // Restore state and notify parent after initial render with items
+    if (this.needsStateRestoration && changedProperties.has('items')) {
+      this.needsStateRestoration = false;
+
+      // Recalculate matches if we have search text
+      if (this.searchText) {
+        this.findMatches(false);
+        if (this.showOnlyMatches) {
+          this.updateShownIndices();
+        }
+      }
+
+      // Always notify parent about current state to ensure sync
+      this.dispatchEvent(new CustomEvent('queue-search-expanded', { detail: { expanded: this.expanded } }));
+      this.dispatchEvent(
+        new CustomEvent('queue-search-show-only-matches', {
+          detail: { showOnlyMatches: this.showOnlyMatches, shownIndices: this.shownIndices },
+        }),
+      );
     }
   }
 
@@ -40,7 +102,13 @@ export class QueueSearch extends LitElement {
           @keydown=${this.onKeyDown}
         />
         ${this.matchIndices.length > 0 ? this.renderMatchInfo() : nothing}
-        <ha-icon-button .path=${mdiClose} @click=${this.clearSearch}></ha-icon-button>
+        <ha-icon-button
+          .path=${mdiEyeCheck}
+          @click=${this.toggleShowOnlyMatches}
+          ?selected=${this.showOnlyMatches}
+          title="Show only matches"
+          style="margin-left: 0.5em;"
+        ></ha-icon-button>
       </div>
     `;
   }
@@ -62,10 +130,21 @@ export class QueueSearch extends LitElement {
 
   private toggleSearch() {
     this.expanded = !this.expanded;
+
+    // Auto-disable eye-check when hiding search bar
+    if (!this.expanded && this.showOnlyMatches) {
+      this.showOnlyMatches = false;
+      this.shownIndices = [];
+      this.dispatchEvent(
+        new CustomEvent('queue-search-show-only-matches', {
+          detail: { showOnlyMatches: false, shownIndices: [] },
+        }),
+      );
+    }
+
+    this.saveStateToLocalStorage();
     if (this.expanded) {
       this.updateComplete.then(() => this.input?.focus());
-    } else {
-      this.clearSearch();
     }
     this.dispatchEvent(new CustomEvent('queue-search-expanded', { detail: { expanded: this.expanded } }));
   }
@@ -74,7 +153,35 @@ export class QueueSearch extends LitElement {
     const newText = (e.target as HTMLInputElement).value;
     const wasExtendingSearch = newText.startsWith(this.searchText) && this.searchText.length > 0;
     this.searchText = newText;
+    this.saveStateToLocalStorage();
     this.findMatches(wasExtendingSearch);
+    if (this.showOnlyMatches) {
+      this.updateShownIndices();
+      // Notify parent of updated shownIndices when value changes and eyecheck is enabled
+      this.dispatchEvent(
+        new CustomEvent('queue-search-show-only-matches', {
+          detail: { showOnlyMatches: this.showOnlyMatches, shownIndices: this.shownIndices },
+        }),
+      );
+    }
+  }
+  private toggleShowOnlyMatches = () => {
+    this.showOnlyMatches = !this.showOnlyMatches;
+    this.saveStateToLocalStorage();
+    if (this.showOnlyMatches) {
+      this.updateShownIndices();
+    } else {
+      this.shownIndices = [];
+    }
+    this.dispatchEvent(
+      new CustomEvent('queue-search-show-only-matches', {
+        detail: { showOnlyMatches: this.showOnlyMatches, shownIndices: this.shownIndices },
+      }),
+    );
+  };
+
+  private updateShownIndices() {
+    this.shownIndices = this.matchIndices.slice();
   }
 
   private findMatches(continueFromCurrent: boolean) {
@@ -82,6 +189,9 @@ export class QueueSearch extends LitElement {
       this.matchIndices = [];
       this.lastHighlightedIndex = -1;
       this.dispatchMatchEvent(-1);
+      if (this.showOnlyMatches) {
+        this.updateShownIndices();
+      }
       return;
     }
 
@@ -93,6 +203,9 @@ export class QueueSearch extends LitElement {
     if (this.matchIndices.length === 0) {
       this.lastHighlightedIndex = -1;
       this.dispatchMatchEvent(-1);
+      if (this.showOnlyMatches) {
+        this.updateShownIndices();
+      }
       return;
     }
 
@@ -104,6 +217,9 @@ export class QueueSearch extends LitElement {
     }
 
     this.highlightCurrentMatch();
+    if (this.showOnlyMatches) {
+      this.updateShownIndices();
+    }
   }
 
   private highlightCurrentMatch() {
@@ -158,8 +274,16 @@ export class QueueSearch extends LitElement {
     this.matchIndices = [];
     this.currentMatchIndex = 0;
     this.lastHighlightedIndex = -1;
+    this.showOnlyMatches = false;
+    this.shownIndices = [];
     this.expanded = false;
+    this.saveStateToLocalStorage();
     this.dispatchMatchEvent(-1);
+    this.dispatchEvent(
+      new CustomEvent('queue-search-show-only-matches', {
+        detail: { showOnlyMatches: false, shownIndices: [] },
+      }),
+    );
   }
 
   private selectAllMatches() {
