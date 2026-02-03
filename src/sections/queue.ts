@@ -4,7 +4,13 @@ import Store from '../model/store';
 import { MediaPlayer } from '../model/media-player';
 import { listStyle, MEDIA_ITEM_SELECTED } from '../constants';
 import { customEvent } from '../utils/utils';
-import { mdiCloseBoxMultipleOutline, mdiPlaylistRemove, mdiSelectInverse, mdiTrashCanOutline } from '@mdi/js';
+import {
+  mdiCloseBoxMultipleOutline,
+  mdiHumanQueue,
+  mdiPlaylistEdit,
+  mdiSelectInverse,
+  mdiTrashCanOutline,
+} from '@mdi/js';
 import '../components/media-row';
 import '../components/queue-search';
 import { QueueSearchMatch } from '../types/queue-search';
@@ -14,7 +20,7 @@ import { queueStyles } from './queue.styles';
 export class Queue extends LitElement {
   @property() store!: Store;
   @state() activePlayer!: MediaPlayer;
-  @state() deleteMode = false;
+  @state() selectMode = false;
   @state() private searchExpanded = false;
   @state() private searchHighlightIndex = -1;
   @state() private searchMatchIndices: number[] = [];
@@ -23,9 +29,31 @@ export class Queue extends LitElement {
   @state() private selectedIndices = new Set<number>();
   @state() private queueItems: MediaPlayerItem[] = [];
   @state() private loading = true;
-  @state() private deletingProgress: { current: number; total: number } | null = null;
-  @state() private cancelDelete = false;
+  @state() private operationProgress: { current: number; total: number; label: string } | null = null;
+  @state() private cancelOperation = false;
   private lastQueueHash = '';
+
+  private get queueTitle(): string {
+    if (this.store.config.queue?.title) {
+      return this.store.config.queue.title;
+    }
+    const playlist = this.activePlayer.attributes.media_playlist ?? 'Play Queue';
+    return this.activePlayer.attributes.media_channel ? `${playlist} (not active)` : playlist;
+  }
+
+  private async scrollToCurrentlyPlaying() {
+    // Wait for LitElement to complete render, then scroll to the selected (currently playing) row
+    await this.updateComplete;
+    await new Promise((r) => requestAnimationFrame(r));
+    const queuePosition = this.activePlayer.attributes.queue_position;
+    if (!queuePosition) {
+      return;
+    }
+    const currentIndex = queuePosition - 1;
+    const rows = this.shadowRoot?.querySelectorAll('sonos-media-row');
+    const selectedRow = rows?.[currentIndex];
+    selectedRow?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
 
   protected willUpdate(changedProperties: PropertyValues): void {
     if (changedProperties.has('store')) {
@@ -56,15 +84,17 @@ export class Queue extends LitElement {
     const selected = queuePosition ? queuePosition - 1 : -1;
     return html`
       <div class="queue-container" @keydown=${this.onKeyDown} tabindex="-1">
-        ${this.deletingProgress
-          ? html`<div class="delete-overlay">
-              <div class="delete-overlay-content">
+        ${this.operationProgress
+          ? html`<div class="operation-overlay">
+              <div class="operation-overlay-content">
                 <ha-spinner></ha-spinner>
-                <div class="delete-progress-text">
-                  Deleting ${this.deletingProgress.current} of ${this.deletingProgress.total}
+                <div class="operation-progress-text">
+                  ${this.operationProgress.total > 1
+                    ? `${this.operationProgress.label} ${this.operationProgress.current} of ${this.operationProgress.total}`
+                    : `${this.operationProgress.label}...`}
                 </div>
                 <ha-control-button-group>
-                  <ha-control-button class="accent" @click=${this.cancelDeleteOperation}>
+                  <ha-control-button class="accent" @click=${this.cancelCurrentOperation}>
                     ${this.store.hass.localize('ui.common.cancel') || 'Cancel'}
                   </ha-control-button>
                 </ha-control-button-group>
@@ -83,21 +113,17 @@ export class Queue extends LitElement {
     const indexMap = this.showOnlyMatches ? this.shownIndices : null;
     return html`
       <div class="header">
-        <div class="title">
-          ${this.store.config.queue?.title ??
-          (this.activePlayer.attributes.media_playlist ?? `Play Queue`) +
-            (this.activePlayer.attributes.media_channel ? ' (not active)' : '')}
-        </div>
+        <div class="title">${this.queueTitle}</div>
         <div class="header-icons">
           <sonos-queue-search
             .items=${this.queueItems}
-            .deleteMode=${this.deleteMode}
+            .selectMode=${this.selectMode}
             @queue-search-match=${this.onSearchMatch}
             @queue-search-select-all=${this.onSelectAllMatches}
             @queue-search-expanded=${this.onSearchExpanded}
             @queue-search-show-only-matches=${this.onShowOnlyMatches}
           ></sonos-queue-search>
-          ${this.deleteMode
+          ${this.selectMode
             ? html`
                 <ha-icon-button
                   .path=${mdiSelectInverse}
@@ -106,10 +132,15 @@ export class Queue extends LitElement {
                 ></ha-icon-button>
                 ${hasSelection
                   ? html`<ha-icon-button
-                      .path=${mdiCloseBoxMultipleOutline}
-                      @click=${this.deleteSelected}
-                      title="Delete selected"
-                    ></ha-icon-button>`
+                        .path=${mdiHumanQueue}
+                        @click=${this.queueSelectedAfterCurrent}
+                        title="Queue selected after current"
+                      ></ha-icon-button>
+                      <ha-icon-button
+                        .path=${mdiCloseBoxMultipleOutline}
+                        @click=${this.deleteSelected}
+                        title="Delete selected"
+                      ></ha-icon-button>`
                   : nothing}
                 <div class="delete-all-btn" @click=${this.clearQueue} title="Delete all">
                   <ha-icon-button .path=${mdiTrashCanOutline}></ha-icon-button>
@@ -121,11 +152,11 @@ export class Queue extends LitElement {
                 <sonos-repeat .store=${this.store}></sonos-repeat>
               `}
           <ha-icon-button
-            .path=${mdiPlaylistRemove}
-            @click=${this.toggleDeleteMode}
-            ?selected=${this.deleteMode}
-            title="Delete mode"
-            ?disabled=${this.deletingProgress !== null}
+            .path=${mdiPlaylistEdit}
+            @click=${this.toggleSelectMode}
+            ?selected=${this.selectMode}
+            title="Select mode"
+            ?disabled=${this.operationProgress !== null}
           ></ha-icon-button>
         </div>
       </div>
@@ -140,6 +171,7 @@ export class Queue extends LitElement {
                 const isPlaying = isSelected && this.activePlayer.isPlaying();
                 const isSearchHighlight = this.searchHighlightIndex === realIndex;
                 const isChecked = this.selectedIndices.has(realIndex);
+                const isNextUp = selected >= 0 && realIndex === selected + 1;
                 return html`
                   <sonos-media-row
                     @click=${() => this.onMediaItemClick(index)}
@@ -147,9 +179,12 @@ export class Queue extends LitElement {
                     .selected=${isSelected}
                     .playing=${isPlaying}
                     .searchHighlight=${isSearchHighlight}
-                    .showCheckbox=${this.deleteMode}
+                    .showCheckbox=${this.selectMode}
+                    .showQueueButton=${!this.selectMode}
+                    .queueButtonDisabled=${isSelected || isNextUp}
                     .checked=${isChecked}
                     @checkbox-change=${(e: CustomEvent) => this.onCheckboxChange(realIndex, e.detail.checked)}
+                    @queue-item=${() => this.queueAfterCurrent(realIndex)}
                     .store=${this.store}
                   ></sonos-media-row>
                 `;
@@ -157,6 +192,70 @@ export class Queue extends LitElement {
             </mwc-list>`}
       </div>
     `;
+  }
+
+  private async queueAfterCurrent(index: number) {
+    const item = this.queueItems[index];
+    if (!item?.media_content_id) {
+      return;
+    }
+
+    const queuePosition = this.activePlayer.attributes.queue_position;
+    const currentIndex = queuePosition ? queuePosition - 1 : -1;
+
+    this.operationProgress = { current: 0, total: 1, label: 'Moving' };
+    this.cancelOperation = false;
+
+    try {
+      await this.store.mediaControlService.moveQueueItemAfterCurrent(this.activePlayer, item, index, currentIndex);
+      if (this.cancelOperation) {
+        return;
+      }
+      await this.fetchQueue();
+      await this.scrollToCurrentlyPlaying();
+    } finally {
+      this.operationProgress = null;
+      this.cancelOperation = false;
+    }
+  }
+
+  private async queueSelectedAfterCurrent() {
+    const queuePosition = this.activePlayer.attributes.queue_position;
+    const currentIndex = queuePosition ? queuePosition - 1 : -1;
+
+    const selectedIndices = Array.from(this.selectedIndices)
+      .filter((i) => i !== currentIndex)
+      .sort((a, b) => a - b);
+
+    if (selectedIndices.length === 0) {
+      return;
+    }
+
+    const total = selectedIndices.length;
+    this.operationProgress = { current: 0, total, label: 'Moving' };
+    this.cancelOperation = false;
+
+    try {
+      await this.store.mediaControlService.moveQueueItemsAfterCurrent(
+        this.activePlayer,
+        this.queueItems,
+        selectedIndices,
+        currentIndex,
+        (completed) => {
+          this.operationProgress = { current: completed, total, label: 'Moving' };
+        },
+        () => this.cancelOperation,
+      );
+      if (this.cancelOperation) {
+        return;
+      }
+      this.exitSelectMode();
+      await this.fetchQueue();
+      await this.scrollToCurrentlyPlaying();
+    } finally {
+      this.operationProgress = null;
+      this.cancelOperation = false;
+    }
   }
 
   private onSearchMatch(e: CustomEvent<QueueSearchMatch>) {
@@ -192,7 +291,7 @@ export class Queue extends LitElement {
     if (this.showOnlyMatches && this.shownIndices.length > 0) {
       realIndex = this.shownIndices[index];
     }
-    if (!this.deleteMode) {
+    if (!this.selectMode) {
       await this.store.hassService.playQueue(this.activePlayer, realIndex);
       this.dispatchEvent(customEvent(MEDIA_ITEM_SELECTED));
     }
@@ -208,32 +307,32 @@ export class Queue extends LitElement {
   }
 
   private onKeyDown(e: KeyboardEvent) {
-    if (e.key === 'Escape' && this.deleteMode) {
-      this.exitDeleteMode();
+    if (e.key === 'Escape' && this.selectMode) {
+      this.exitSelectMode();
     }
   }
 
-  private toggleDeleteMode() {
-    if (this.deleteMode) {
-      this.exitDeleteMode();
+  private toggleSelectMode() {
+    if (this.selectMode) {
+      this.exitSelectMode();
     } else {
-      this.deleteMode = true;
+      this.selectMode = true;
       this.selectedIndices = new Set();
     }
   }
 
-  private exitDeleteMode() {
-    this.deleteMode = false;
+  private exitSelectMode() {
+    this.selectMode = false;
     this.selectedIndices = new Set();
   }
 
-  private cancelDeleteOperation() {
-    this.cancelDelete = true;
+  private cancelCurrentOperation() {
+    this.cancelOperation = true;
   }
 
   private async clearQueue() {
     await this.store.hassService.clearQueue(this.activePlayer);
-    this.exitDeleteMode();
+    this.exitSelectMode();
     await this.fetchQueue();
   }
 
@@ -247,14 +346,14 @@ export class Queue extends LitElement {
     const indices = [...this.selectedIndices].sort((a, b) => a - b); // Sort ascending
     const total = indices.length;
 
-    this.deletingProgress = { current: 0, total };
-    this.cancelDelete = false;
+    this.operationProgress = { current: 0, total, label: 'Deleting' };
+    this.cancelOperation = false;
 
     try {
       let deleted = 0;
       let remaining = [...indices];
 
-      while (remaining.length > 0 && !this.cancelDelete) {
+      while (remaining.length > 0 && !this.cancelOperation) {
         // Find contiguous chunks and delete first half of each in parallel
         const batch = this.getParallelBatch(remaining);
 
@@ -265,7 +364,7 @@ export class Queue extends LitElement {
         // Track which specific indices succeeded
         const succeededIndices = batch.filter((_, i) => results[i].status === 'fulfilled');
         deleted += succeededIndices.length;
-        this.deletingProgress = { current: deleted, total };
+        this.operationProgress = { current: deleted, total, label: 'Deleting' };
 
         // If all failed, break to avoid infinite loop
         if (succeededIndices.length === 0) {
@@ -277,9 +376,9 @@ export class Queue extends LitElement {
         remaining = this.recalculateIndices(remaining, succeededIndices);
       }
     } finally {
-      this.deletingProgress = null;
-      this.cancelDelete = false;
-      this.exitDeleteMode();
+      this.operationProgress = null;
+      this.cancelOperation = false;
+      this.exitSelectMode();
       await this.fetchQueue();
     }
   }

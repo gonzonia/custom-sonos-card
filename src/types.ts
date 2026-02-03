@@ -285,4 +285,5 @@ export interface QueueItem {
   media_album_name: string;
   media_artist: string;
   media_content_id: string;
+  media_content_type: string;
 }

@@ -208,6 +208,75 @@ export default class MediaControlService {
     });
   }
 
+  async queueMediaAfterCurrent(mediaPlayer: MediaPlayer, item: MediaPlayerItem) {
+    const mediaContentId = this.transformMediaContentId(item.media_content_id ?? '');
+    await this.hassService.callMediaService('play_media', {
+      entity_id: mediaPlayer.id,
+      media_content_id: mediaContentId,
+      media_content_type: 'music',
+      enqueue: 'next',
+    });
+  }
+
+  async moveQueueItemAfterCurrent(
+    mediaPlayer: MediaPlayer,
+    item: MediaPlayerItem,
+    index: number,
+    currentIndex: number,
+  ) {
+    await this.queueMediaAfterCurrent(mediaPlayer, item);
+    const removeIndex = index > currentIndex ? index + 1 : index;
+    await this.hassService.removeFromQueue(mediaPlayer, removeIndex);
+  }
+
+  async moveQueueItemsAfterCurrent(
+    mediaPlayer: MediaPlayer,
+    items: MediaPlayerItem[],
+    indices: number[],
+    currentIndex: number,
+    onProgress?: (completed: number) => void,
+    shouldCancel?: () => boolean,
+  ) {
+    const reversedForInsert = [...indices].reverse();
+    let completed = 0;
+
+    for (const index of reversedForInsert) {
+      if (shouldCancel?.()) {
+        return;
+      }
+      const item = items[index];
+      if (item?.media_content_id) {
+        await this.queueMediaAfterCurrent(mediaPlayer, item);
+      }
+      completed++;
+      onProgress?.(completed);
+    }
+
+    const numInserted = indices.length;
+    const reversedIndices = [...indices].reverse();
+    for (const originalIndex of reversedIndices) {
+      if (shouldCancel?.()) {
+        return;
+      }
+      const removeIndex = originalIndex > currentIndex ? originalIndex + numInserted : originalIndex;
+      await this.hassService.removeFromQueue(mediaPlayer, removeIndex);
+    }
+  }
+
+  private transformMediaContentId(id: string): string {
+    if (!id) {
+      return '';
+    }
+    try {
+      const withoutQuery = id.split('?')[0];
+      const colonIndex = withoutQuery.indexOf(':');
+      const withoutPrefix = colonIndex !== -1 ? withoutQuery.substring(colonIndex + 1) : withoutQuery;
+      return decodeURIComponent(withoutPrefix);
+    } catch {
+      return id;
+    }
+  }
+
   async seek(mediaPlayer: MediaPlayer, position: number) {
     await this.hassService.callMediaService('media_seek', {
       entity_id: mediaPlayer.id,

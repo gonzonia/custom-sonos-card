@@ -1,12 +1,12 @@
 import { html, LitElement, nothing, PropertyValues } from 'lit';
 import { property, state, query } from 'lit/decorators.js';
-import { mdiMagnify, mdiChevronUp, mdiChevronDown, mdiCheckAll, mdiEyeCheck } from '@mdi/js';
+import { mdiMagnify, mdiChevronUp, mdiChevronDown, mdiCheckAll, mdiEyeCheck, mdiClose } from '@mdi/js';
 import { QueueSearchMatch } from '../types/queue-search';
 import { queueSearchStyles } from './queue-search.styles';
 
 export class QueueSearch extends LitElement {
   @property({ attribute: false }) items: { title: string }[] = [];
-  @property({ type: Boolean }) deleteMode = false;
+  @property({ type: Boolean }) selectMode = false;
   @state() expanded = false;
   @state() private searchText = '';
   @state() private matchIndices: number[] = [];
@@ -91,6 +91,7 @@ export class QueueSearch extends LitElement {
   }
 
   private renderSearchBar(hasNoMatch: boolean) {
+    const hasText = this.searchText.length > 0;
     return html`
       <div class="search-row">
         <input
@@ -102,13 +103,21 @@ export class QueueSearch extends LitElement {
           @keydown=${this.onKeyDown}
         />
         ${this.matchIndices.length > 0 ? this.renderMatchInfo() : nothing}
-        <ha-icon-button
-          .path=${mdiEyeCheck}
-          @click=${this.toggleShowOnlyMatches}
-          ?selected=${this.showOnlyMatches}
-          title="Show only matches"
-          style="margin-left: 0.5em;"
-        ></ha-icon-button>
+        ${hasText
+          ? html`<ha-icon-button
+              .path=${mdiEyeCheck}
+              @click=${this.toggleShowOnlyMatches}
+              ?selected=${this.showOnlyMatches}
+              title="Show only matches"
+            ></ha-icon-button>`
+          : nothing}
+        ${hasText
+          ? html`<ha-icon-button
+              .path=${mdiClose}
+              @click=${this.clearSearchText}
+              title="Clear search"
+            ></ha-icon-button>`
+          : nothing}
       </div>
     `;
   }
@@ -118,7 +127,7 @@ export class QueueSearch extends LitElement {
       <span class="match-info">${this.currentMatchIndex + 1}/${this.matchIndices.length}</span>
       <ha-icon-button .path=${mdiChevronUp} @click=${this.previousMatch}></ha-icon-button>
       <ha-icon-button .path=${mdiChevronDown} @click=${this.nextMatch}></ha-icon-button>
-      ${this.deleteMode
+      ${this.selectMode
         ? html`<ha-icon-button
             .path=${mdiCheckAll}
             @click=${this.selectAllMatches}
@@ -265,18 +274,20 @@ export class QueueSearch extends LitElement {
       e.preventDefault();
       this.nextMatch();
     } else if (e.key === 'Escape') {
-      this.clearSearch();
+      this.resetSearchState(true);
     }
   }
 
-  private clearSearch() {
+  private resetSearchState(collapse = false, refocus = false) {
     this.searchText = '';
     this.matchIndices = [];
     this.currentMatchIndex = 0;
     this.lastHighlightedIndex = -1;
     this.showOnlyMatches = false;
     this.shownIndices = [];
-    this.expanded = false;
+    if (collapse) {
+      this.expanded = false;
+    }
     this.saveStateToLocalStorage();
     this.dispatchMatchEvent(-1);
     this.dispatchEvent(
@@ -284,6 +295,13 @@ export class QueueSearch extends LitElement {
         detail: { showOnlyMatches: false, shownIndices: [] },
       }),
     );
+    if (refocus) {
+      this.updateComplete.then(() => this.input?.focus());
+    }
+  }
+
+  private clearSearchText() {
+    this.resetSearchState(false, true);
   }
 
   private selectAllMatches() {
