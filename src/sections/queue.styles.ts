@@ -33,7 +33,8 @@ export const queueStyles = css`
     padding: 0.5rem;
   }
   .list {
-    overflow: auto;
+    overflow-y: auto;
+    overflow-x: hidden;
     position: relative;
     flex: 1;
     --mdc-icon-button-size: 1.5em;
@@ -50,7 +51,7 @@ export const queueStyles = css`
     justify-content: center;
     padding: 2rem;
   }
-  .delete-overlay {
+  .operation-overlay {
     position: absolute;
     top: 0;
     left: 0;
@@ -62,7 +63,7 @@ export const queueStyles = css`
     align-items: center;
     z-index: 100;
   }
-  .delete-overlay-content {
+  .operation-overlay-content {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -70,7 +71,7 @@ export const queueStyles = css`
     padding: 2rem;
     text-align: center;
   }
-  .delete-progress-text {
+  .operation-progress-text {
     font-size: 1.2rem;
     color: var(--primary-text-color, #fff);
   }

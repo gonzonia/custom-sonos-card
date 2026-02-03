@@ -20,6 +20,9 @@
 - Keep types clean in normal code, extract type definitions to a types.ts if they are complex or used in multiple places.
 - Use conventional commits for commit messages.
 
+# Code structure
+- Separate code into logical modules and components. Logic should be in services, UI in components and sections, types in types.ts, etc. Use utils/ for shared helper functions. Editor related code should be in editor/ folder.
+
 # Editor Schema
 - Config options in the advanced editor are organized by section (Common, Player, Favorites, Groups, Grouping, Volumes, Queue).
 - Section-specific config options should be prefixed with the section name (e.g., `playerHideHeader`, `favoritesTitle`).

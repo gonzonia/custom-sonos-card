@@ -1,5 +1,7 @@
 import { css, html, LitElement, nothing, PropertyValues } from 'lit';
 import { property } from 'lit/decorators.js';
+import { classMap } from 'lit/directives/class-map.js';
+import { mdiHumanQueue } from '@mdi/js';
 import Store from '../model/store';
 import { MediaPlayerItem } from '../types';
 import { mediaItemTitleStyle } from '../constants';
@@ -14,6 +16,8 @@ class MediaRow extends LitElement {
   @property({ type: Boolean }) searchHighlight = false;
   @property({ type: Boolean }) showCheckbox = false;
   @property({ type: Boolean }) checked = false;
+  @property({ type: Boolean }) showQueueButton = false;
+  @property({ type: Boolean }) queueButtonDisabled = false;
 
   render() {
     const { itemBackgroundColor, itemTextColor, selectedItemBackgroundColor, selectedItemTextColor } =
@@ -32,13 +36,22 @@ class MediaRow extends LitElement {
         style="${cssVars}"
       >
         <div class="row">
-          ${this.showCheckbox
-            ? html`<ha-checkbox
-                .checked=${this.checked}
-                @change=${this.onCheckboxChange}
-                @click=${(e: Event) => e.stopPropagation()}
-              ></ha-checkbox>`
-            : nothing}
+          <div class="icon-slot">
+            ${this.showCheckbox
+              ? html`<ha-checkbox
+                  .checked=${this.checked}
+                  @change=${this.onCheckboxChange}
+                  @click=${(e: Event) => e.stopPropagation()}
+                ></ha-checkbox>`
+              : this.showQueueButton
+                ? html`<ha-icon-button
+                    class=${classMap({ 'queue-btn': true, disabled: this.queueButtonDisabled })}
+                    .path=${mdiHumanQueue}
+                    ?disabled=${this.queueButtonDisabled}
+                    @click=${this.onQueueClick}
+                  ></ha-icon-button>`
+                : nothing}
+          </div>
           ${renderFavoritesItem(this.item)}
         </div>
         <div class="meta-content" slot="meta">
@@ -54,6 +67,16 @@ class MediaRow extends LitElement {
     this.dispatchEvent(
       new CustomEvent('checkbox-change', {
         detail: { checked: checkbox.checked },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  private onQueueClick(e: Event) {
+    e.stopPropagation();
+    this.dispatchEvent(
+      new CustomEvent('queue-item', {
         bubbles: true,
         composed: true,
       }),
@@ -82,6 +105,10 @@ class MediaRow extends LitElement {
   static get styles() {
     return [
       css`
+        :host {
+          display: block;
+          min-width: 0;
+        }
         .mdc-deprecated-list-item__text {
           width: 100%;
         }
@@ -102,11 +129,31 @@ class MediaRow extends LitElement {
           display: flex;
           flex: 1;
           align-items: center;
+          min-width: 0;
+        }
+
+        .icon-slot {
+          width: 36px;
+          flex-shrink: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
 
         ha-checkbox {
           --mdc-checkbox-unchecked-color: var(--secondary-text-color);
           flex-shrink: 0;
+        }
+
+        .queue-btn {
+          flex-shrink: 0;
+          --mdc-icon-button-size: 36px;
+          --mdc-icon-size: 20px;
+        }
+
+        .queue-btn.disabled {
+          color: var(--disabled-text-color);
+          cursor: default;
         }
 
         .thumbnail {

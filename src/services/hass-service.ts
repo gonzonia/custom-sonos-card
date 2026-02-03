@@ -70,6 +70,8 @@ export default class HassService {
       return queueItems.map((item) => {
         return {
           title: `${item.media_artist} - ${item.media_title}`,
+          media_content_id: item.media_content_id,
+          media_content_type: item.media_content_type,
         };
       });
     } catch (e) {
