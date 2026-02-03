@@ -5,6 +5,7 @@ import { MediaPlayer } from '../model/media-player';
 import { listStyle, MEDIA_ITEM_SELECTED } from '../constants';
 import { customEvent } from '../utils/utils';
 import {
+  mdiAnimationPlay,
   mdiCloseBoxMultipleOutline,
   mdiHumanQueue,
   mdiPlaylistEdit,
@@ -132,6 +133,11 @@ export class Queue extends LitElement {
                 ></ha-icon-button>
                 ${hasSelection
                   ? html`<ha-icon-button
+                        .path=${mdiAnimationPlay}
+                        @click=${this.playSelected}
+                        title="Play selected"
+                      ></ha-icon-button>
+                      <ha-icon-button
                         .path=${mdiHumanQueue}
                         @click=${this.queueSelectedAfterCurrent}
                         title="Queue selected after current"
@@ -243,6 +249,42 @@ export class Queue extends LitElement {
         currentIndex,
         (completed) => {
           this.operationProgress = { current: completed, total, label: 'Moving' };
+        },
+        () => this.cancelOperation,
+      );
+      if (this.cancelOperation) {
+        return;
+      }
+      this.exitSelectMode();
+      await this.fetchQueue();
+      await this.scrollToCurrentlyPlaying();
+    } finally {
+      this.operationProgress = null;
+      this.cancelOperation = false;
+    }
+  }
+
+  private async playSelected() {
+    const selectedIndices = Array.from(this.selectedIndices).sort((a, b) => a - b);
+    if (selectedIndices.length === 0) {
+      return;
+    }
+
+    const items = selectedIndices.map((i) => this.queueItems[i]).filter((item) => item?.media_content_id);
+    if (items.length === 0) {
+      return;
+    }
+
+    const total = items.length;
+    this.operationProgress = { current: 0, total, label: 'Loading' };
+    this.cancelOperation = false;
+
+    try {
+      await this.store.mediaControlService.replaceQueueAndPlay(
+        this.activePlayer,
+        items,
+        (completed) => {
+          this.operationProgress = { current: completed, total, label: 'Loading' };
         },
         () => this.cancelOperation,
       );
