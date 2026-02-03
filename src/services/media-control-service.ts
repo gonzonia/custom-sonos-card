@@ -200,21 +200,15 @@ export default class MediaControlService {
     await this.hassService.callMediaService('select_source', { source: source, entity_id: mediaPlayer.id });
   }
 
-  async playMedia(mediaPlayer: MediaPlayer, item: MediaPlayerItem) {
-    await this.hassService.callMediaService('play_media', {
-      entity_id: mediaPlayer.id,
-      media_content_id: item.media_content_id,
-      media_content_type: item.media_content_type,
-    });
-  }
-
-  async queueMediaAfterCurrent(mediaPlayer: MediaPlayer, item: MediaPlayerItem) {
-    const mediaContentId = this.transformMediaContentId(item.media_content_id ?? '');
+  async playMedia(mediaPlayer: MediaPlayer, item: MediaPlayerItem, enqueue?: 'add' | 'next' | 'replace') {
+    const mediaContentId = enqueue
+      ? this.transformMediaContentId(item.media_content_id ?? '')
+      : (item.media_content_id ?? '');
     await this.hassService.callMediaService('play_media', {
       entity_id: mediaPlayer.id,
       media_content_id: mediaContentId,
-      media_content_type: 'music',
-      enqueue: 'next',
+      media_content_type: item.media_content_type ?? 'music',
+      ...(enqueue && { enqueue }),
     });
   }
 
@@ -224,7 +218,7 @@ export default class MediaControlService {
     index: number,
     currentIndex: number,
   ) {
-    await this.queueMediaAfterCurrent(mediaPlayer, item);
+    await this.playMedia(mediaPlayer, item, 'next');
     const removeIndex = index > currentIndex ? index + 1 : index;
     await this.hassService.removeFromQueue(mediaPlayer, removeIndex);
   }
@@ -246,7 +240,7 @@ export default class MediaControlService {
       }
       const item = items[index];
       if (item?.media_content_id) {
-        await this.queueMediaAfterCurrent(mediaPlayer, item);
+        await this.playMedia(mediaPlayer, item, 'next');
       }
       completed++;
       onProgress?.(completed);
@@ -260,6 +254,29 @@ export default class MediaControlService {
       }
       const removeIndex = originalIndex > currentIndex ? originalIndex + numInserted : originalIndex;
       await this.hassService.removeFromQueue(mediaPlayer, removeIndex);
+    }
+  }
+
+  async replaceQueueAndPlay(
+    mediaPlayer: MediaPlayer,
+    items: MediaPlayerItem[],
+    onProgress?: (completed: number) => void,
+    shouldCancel?: () => boolean,
+  ) {
+    if (items.length === 0) {
+      return;
+    }
+
+    const [firstItem, ...restItems] = items;
+    await this.playMedia(mediaPlayer, firstItem, 'replace');
+    onProgress?.(1);
+
+    for (let i = 0; i < restItems.length; i++) {
+      if (shouldCancel?.()) {
+        return;
+      }
+      await this.playMedia(mediaPlayer, restItems[i], 'add');
+      onProgress?.(i + 2);
     }
   }
 
