@@ -5,6 +5,7 @@ const options = {
   grouping: 'Grouping',
   volumes: 'Volumes',
   queue: 'Queue',
+  search: 'Search',
 };
 
 export const COMMON_SCHEMA = [

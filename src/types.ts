@@ -1,5 +1,6 @@
 import { HomeAssistant, LovelaceCardConfig } from 'custom-card-helpers';
 import { MediaPlayer } from './model/media-player';
+import { MediaPlayerItem as UpstreamMediaPlayerItem } from './upstream/data/media-player';
 
 declare global {
   // noinspection JSUnusedGlobalSymbols
@@ -15,6 +16,7 @@ export enum Section {
   GROUPING = 'grouping',
   VOLUMES = 'volumes',
   QUEUE = 'queue',
+  SEARCH = 'search',
 }
 
 export type ConfigPredefinedGroupPlayer = PredefinedGroupPlayer<string>;
@@ -34,6 +36,7 @@ interface SectionButtonIcons {
   mediaBrowser?: string;
   volumes?: string;
   queue?: string;
+  search?: string;
 }
 
 interface StyleConfig {
@@ -200,6 +203,7 @@ export interface CardConfig extends LovelaceCardConfig {
   volumes?: VolumesConfig;
   queue?: QueueConfig;
   mediaBrowser?: MediaBrowserConfig;
+  search?: SearchConfig;
 }
 
 export interface MediaArtworkOverride {
@@ -230,8 +234,6 @@ export interface CustomFavorite {
 export interface CustomFavoriteThumbnails {
   [title: string]: string;
 }
-
-import { MediaPlayerItem as UpstreamMediaPlayerItem } from './upstream/data/media-player';
 
 export interface MediaPlayerItem extends Partial<UpstreamMediaPlayerItem> {
   title: string;
@@ -286,4 +288,79 @@ export interface QueueItem {
   media_artist: string;
   media_content_id: string;
   media_content_type: string;
+}
+
+export interface QueueSearchMatch {
+  index: number;
+  currentMatch: number;
+  totalMatches: number;
+  matchIndices: number[];
+}
+
+export type SearchMediaType = 'artist' | 'album' | 'track' | 'playlist';
+
+export interface SearchConfig {
+  massConfigEntryId?: string;
+  defaultMediaType?: SearchMediaType;
+  searchLimit?: number;
+  title?: string;
+  autoSearchMinChars?: number;
+  autoSearchDebounceMs?: number;
+}
+
+export interface MusicAssistantSearchResult {
+  media_type: string;
+  name: string;
+  uri: string;
+  version?: string;
+  image?: {
+    path?: string;
+    provider?: string;
+    remotely_accessible?: boolean;
+  };
+  artists?: Array<{
+    name: string;
+    item_id: string;
+  }>;
+  album?: {
+    name: string;
+    item_id: string;
+  };
+  sort_name?: string;
+  item_id: string;
+  provider: string;
+  provider_mappings?: Array<{
+    item_id: string;
+    provider_domain: string;
+    provider_instance: string;
+    url?: string;
+  }>;
+}
+
+export interface MusicAssistantSearchResponse {
+  artists?: MusicAssistantSearchResult[];
+  albums?: MusicAssistantSearchResult[];
+  tracks?: MusicAssistantSearchResult[];
+  playlists?: MusicAssistantSearchResult[];
+}
+
+export interface ConfigEntry {
+  entry_id: string;
+  domain: string;
+  title: string;
+  state: string;
+}
+
+export interface SearchResultItem {
+  title: string;
+  subtitle?: string;
+  uri: string;
+  mediaType: SearchMediaType;
+  imageUrl?: string;
+}
+
+export interface OperationProgress {
+  current: number;
+  total: number;
+  label: string;
 }

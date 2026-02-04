@@ -4,18 +4,14 @@ import Store from '../model/store';
 import { MediaPlayer } from '../model/media-player';
 import { listStyle, MEDIA_ITEM_SELECTED } from '../constants';
 import { customEvent } from '../utils/utils';
-import {
-  mdiAnimationPlay,
-  mdiCloseBoxMultipleOutline,
-  mdiHumanQueue,
-  mdiPlaylistEdit,
-  mdiSelectInverse,
-  mdiTrashCanOutline,
-} from '@mdi/js';
+import { clearSelection, invertSelection, updateSelection } from '../utils/selection-utils';
+import { getParallelBatch, recalculateIndicesAfterDeletion } from '../utils/batch-operation-utils';
+import { mdiCloseBoxMultipleOutline, mdiPlaylistEdit, mdiTrashCanOutline } from '@mdi/js';
 import '../components/media-row';
 import '../components/queue-search';
-import { QueueSearchMatch } from '../types/queue-search';
-import { MediaPlayerItem } from '../types';
+import '../components/selection-actions';
+import '../components/operation-overlay';
+import { MediaPlayerItem, OperationProgress, QueueSearchMatch } from '../types';
 import { queueStyles } from './queue.styles';
 
 export class Queue extends LitElement {
@@ -30,7 +26,7 @@ export class Queue extends LitElement {
   @state() private selectedIndices = new Set<number>();
   @state() private queueItems: MediaPlayerItem[] = [];
   @state() private loading = true;
-  @state() private operationProgress: { current: number; total: number; label: string } | null = null;
+  @state() private operationProgress: OperationProgress | null = null;
   @state() private cancelOperation = false;
   private lastQueueHash = '';
 
@@ -85,23 +81,11 @@ export class Queue extends LitElement {
     const selected = queuePosition ? queuePosition - 1 : -1;
     return html`
       <div class="queue-container" @keydown=${this.onKeyDown} tabindex="-1">
-        ${this.operationProgress
-          ? html`<div class="operation-overlay">
-              <div class="operation-overlay-content">
-                <ha-spinner></ha-spinner>
-                <div class="operation-progress-text">
-                  ${this.operationProgress.total > 1
-                    ? `${this.operationProgress.label} ${this.operationProgress.current} of ${this.operationProgress.total}`
-                    : `${this.operationProgress.label}...`}
-                </div>
-                <ha-control-button-group>
-                  <ha-control-button class="accent" @click=${this.cancelCurrentOperation}>
-                    ${this.store.hass.localize('ui.common.cancel') || 'Cancel'}
-                  </ha-control-button>
-                </ha-control-button-group>
-              </div>
-            </div>`
-          : nothing}
+        <sonos-operation-overlay
+          .progress=${this.operationProgress}
+          .hass=${this.store.hass}
+          @cancel-operation=${this.cancelCurrentOperation}
+        ></sonos-operation-overlay>
         ${this.renderQueue(selected)}
       </div>
     `;
@@ -112,9 +96,13 @@ export class Queue extends LitElement {
     // If showOnlyMatches is enabled, filter queueItems and map indices
     const displayItems = this.showOnlyMatches ? this.shownIndices.map((i) => this.queueItems[i]) : this.queueItems;
     const indexMap = this.showOnlyMatches ? this.shownIndices : null;
+    const itemCount = this.queueItems.length;
     return html`
       <div class="header">
-        <div class="title">${this.queueTitle}</div>
+        <div class="title-container">
+          <span class="title">${this.queueTitle}</span>
+          ${itemCount > 0 ? html`<span class="item-count">(${itemCount} items)</span>` : ''}
+        </div>
         <div class="header-icons">
           <sonos-queue-search
             .items=${this.queueItems}
@@ -126,27 +114,20 @@ export class Queue extends LitElement {
           ></sonos-queue-search>
           ${this.selectMode
             ? html`
-                <ha-icon-button
-                  .path=${mdiSelectInverse}
-                  @click=${this.invertSelection}
-                  title="Invert selection"
-                ></ha-icon-button>
+                <sonos-selection-actions
+                  .hasSelection=${hasSelection}
+                  .disabled=${this.operationProgress !== null}
+                  @invert-selection=${this.handleInvertSelection}
+                  @play-selected=${this.playSelected}
+                  @queue-selected=${this.queueSelectedAfterCurrent}
+                  @queue-selected-at-end=${this.queueSelectedAtEnd}
+                ></sonos-selection-actions>
                 ${hasSelection
                   ? html`<ha-icon-button
-                        .path=${mdiAnimationPlay}
-                        @click=${this.playSelected}
-                        title="Play selected"
-                      ></ha-icon-button>
-                      <ha-icon-button
-                        .path=${mdiHumanQueue}
-                        @click=${this.queueSelectedAfterCurrent}
-                        title="Queue selected after current"
-                      ></ha-icon-button>
-                      <ha-icon-button
-                        .path=${mdiCloseBoxMultipleOutline}
-                        @click=${this.deleteSelected}
-                        title="Delete selected"
-                      ></ha-icon-button>`
+                      .path=${mdiCloseBoxMultipleOutline}
+                      @click=${this.deleteSelected}
+                      title="Delete selected"
+                    ></ha-icon-button>`
                   : nothing}
                 <div class="delete-all-btn" @click=${this.clearQueue} title="Delete all">
                   <ha-icon-button .path=${mdiTrashCanOutline}></ha-icon-button>
@@ -225,30 +206,15 @@ export class Queue extends LitElement {
     }
   }
 
-  private async queueSelectedAfterCurrent() {
-    const queuePosition = this.activePlayer.attributes.queue_position;
-    const currentIndex = queuePosition ? queuePosition - 1 : -1;
-
-    const selectedIndices = Array.from(this.selectedIndices)
-      .filter((i) => i !== currentIndex)
-      .sort((a, b) => a - b);
-
-    if (selectedIndices.length === 0) {
-      return;
-    }
-
-    const total = selectedIndices.length;
-    this.operationProgress = { current: 0, total, label: 'Moving' };
+  private async runBatchOperation(
+    operation: (onProgress: (completed: number) => void, shouldCancel: () => boolean) => Promise<void>,
+    options: { scrollToPlaying?: boolean } = {},
+  ) {
     this.cancelOperation = false;
-
     try {
-      await this.store.mediaControlService.moveQueueItemsAfterCurrent(
-        this.activePlayer,
-        this.queueItems,
-        selectedIndices,
-        currentIndex,
+      await operation(
         (completed) => {
-          this.operationProgress = { current: completed, total, label: 'Moving' };
+          this.operationProgress = { ...this.operationProgress!, current: completed };
         },
         () => this.cancelOperation,
       );
@@ -257,11 +223,65 @@ export class Queue extends LitElement {
       }
       this.exitSelectMode();
       await this.fetchQueue();
-      await this.scrollToCurrentlyPlaying();
+      if (options.scrollToPlaying) {
+        await this.scrollToCurrentlyPlaying();
+      }
     } finally {
       this.operationProgress = null;
       this.cancelOperation = false;
     }
+  }
+
+  private getSelectedIndicesExcludingCurrent(): number[] {
+    const queuePosition = this.activePlayer.attributes.queue_position;
+    const currentIndex = queuePosition ? queuePosition - 1 : -1;
+    return Array.from(this.selectedIndices)
+      .filter((i) => i !== currentIndex)
+      .sort((a, b) => a - b);
+  }
+
+  private async queueSelectedAfterCurrent() {
+    const selectedIndices = this.getSelectedIndicesExcludingCurrent();
+    if (selectedIndices.length === 0) {
+      return;
+    }
+
+    const total = selectedIndices.length;
+    const currentIndex = (this.activePlayer.attributes.queue_position ?? 1) - 1;
+    this.operationProgress = { current: 0, total, label: 'Moving' };
+
+    await this.runBatchOperation(
+      (onProgress, shouldCancel) =>
+        this.store.mediaControlService.moveQueueItemsAfterCurrent(
+          this.activePlayer,
+          this.queueItems,
+          selectedIndices,
+          currentIndex,
+          onProgress,
+          shouldCancel,
+        ),
+      { scrollToPlaying: true },
+    );
+  }
+
+  private async queueSelectedAtEnd() {
+    const selectedIndices = this.getSelectedIndicesExcludingCurrent();
+    if (selectedIndices.length === 0) {
+      return;
+    }
+
+    const total = selectedIndices.length;
+    this.operationProgress = { current: 0, total, label: 'Moving' };
+
+    await this.runBatchOperation((onProgress, shouldCancel) =>
+      this.store.mediaControlService.moveQueueItemsToEnd(
+        this.activePlayer,
+        this.queueItems,
+        selectedIndices,
+        onProgress,
+        shouldCancel,
+      ),
+    );
   }
 
   private async playSelected() {
@@ -277,27 +297,12 @@ export class Queue extends LitElement {
 
     const total = items.length;
     this.operationProgress = { current: 0, total, label: 'Loading' };
-    this.cancelOperation = false;
 
-    try {
-      await this.store.mediaControlService.replaceQueueAndPlay(
-        this.activePlayer,
-        items,
-        (completed) => {
-          this.operationProgress = { current: completed, total, label: 'Loading' };
-        },
-        () => this.cancelOperation,
-      );
-      if (this.cancelOperation) {
-        return;
-      }
-      this.exitSelectMode();
-      await this.fetchQueue();
-      await this.scrollToCurrentlyPlaying();
-    } finally {
-      this.operationProgress = null;
-      this.cancelOperation = false;
-    }
+    await this.runBatchOperation(
+      (onProgress, shouldCancel) =>
+        this.store.mediaControlService.queueAndPlay(this.activePlayer, items, 'replace', onProgress, shouldCancel),
+      { scrollToPlaying: true },
+    );
   }
 
   private onSearchMatch(e: CustomEvent<QueueSearchMatch>) {
@@ -318,14 +323,8 @@ export class Queue extends LitElement {
     this.selectedIndices = new Set([...this.selectedIndices, ...this.searchMatchIndices]);
   }
 
-  private invertSelection() {
-    const newSelection = new Set<number>();
-    for (let i = 0; i < this.queueItems.length; i++) {
-      if (!this.selectedIndices.has(i)) {
-        newSelection.add(i);
-      }
-    }
-    this.selectedIndices = newSelection;
+  private handleInvertSelection() {
+    this.selectedIndices = invertSelection(this.selectedIndices, this.queueItems.length);
   }
 
   private onMediaItemClick = async (index: number) => {
@@ -340,12 +339,7 @@ export class Queue extends LitElement {
   };
 
   private onCheckboxChange(index: number, checked: boolean) {
-    if (checked) {
-      this.selectedIndices.add(index);
-    } else {
-      this.selectedIndices.delete(index);
-    }
-    this.selectedIndices = new Set(this.selectedIndices); // Trigger reactivity
+    this.selectedIndices = updateSelection(this.selectedIndices, index, checked);
   }
 
   private onKeyDown(e: KeyboardEvent) {
@@ -359,13 +353,13 @@ export class Queue extends LitElement {
       this.exitSelectMode();
     } else {
       this.selectMode = true;
-      this.selectedIndices = new Set();
+      this.selectedIndices = clearSelection();
     }
   }
 
   private exitSelectMode() {
     this.selectMode = false;
-    this.selectedIndices = new Set();
+    this.selectedIndices = clearSelection();
   }
 
   private cancelCurrentOperation() {
@@ -397,7 +391,7 @@ export class Queue extends LitElement {
 
       while (remaining.length > 0 && !this.cancelOperation) {
         // Find contiguous chunks and delete first half of each in parallel
-        const batch = this.getParallelBatch(remaining);
+        const batch = getParallelBatch(remaining);
 
         const results = await Promise.allSettled(
           batch.map((index) => this.store.hassService.removeFromQueue(this.activePlayer, index)),
@@ -415,7 +409,7 @@ export class Queue extends LitElement {
         }
 
         // Recalculate remaining indices based on which ones actually succeeded
-        remaining = this.recalculateIndices(remaining, succeededIndices);
+        remaining = recalculateIndicesAfterDeletion(remaining, succeededIndices);
       }
     } finally {
       this.operationProgress = null;
@@ -425,33 +419,7 @@ export class Queue extends LitElement {
     }
   }
 
-  private getParallelBatch(sortedIndices: number[]): number[] {
-    // Smaller batches = more frequent progress updates
-    const MAX_PARALLEL = 50;
-
-    // Find first contiguous chunk
-    const chunk: number[] = [sortedIndices[0]];
-    for (let i = 1; i < sortedIndices.length; i++) {
-      if (sortedIndices[i] === sortedIndices[i - 1] + 1) {
-        chunk.push(sortedIndices[i]);
-      } else {
-        break;
-      }
-    }
-    // Return first half of the chunk (at least 1, max MAX_PARALLEL)
-    const halfSize = Math.min(MAX_PARALLEL, Math.max(1, Math.floor(chunk.length / 2)));
-    return chunk.slice(0, halfSize);
-  }
-
-  private recalculateIndices(remaining: number[], deleted: number[]): number[] {
-    const deletedSet = new Set(deleted);
-    const maxDeleted = Math.max(...deleted);
-    const deleteCount = deleted.length;
-
-    return remaining.filter((i) => !deletedSet.has(i)).map((i) => (i > maxDeleted ? i - deleteCount : i));
-  }
-
   static get styles() {
-    return [listStyle, queueStyles];
+    return [listStyle, ...queueStyles];
   }
 }

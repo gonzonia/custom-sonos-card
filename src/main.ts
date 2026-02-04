@@ -4,6 +4,7 @@ import { Grouping } from './sections/grouping';
 import { Groups } from './sections/groups';
 import { MediaBrowser } from './sections/media-browser';
 import { Queue } from './sections/queue';
+import { Search } from './sections/search';
 import { Volumes } from './sections/volumes';
 
 window.customCards.push({
@@ -20,3 +21,4 @@ customElements.define('sonos-media-browser', MediaBrowser);
 customElements.define('sonos-player', Player);
 customElements.define('sonos-volumes', Volumes);
 customElements.define('sonos-queue', Queue);
+customElements.define('sonos-search', Search);
