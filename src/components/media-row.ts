@@ -29,7 +29,7 @@ class MediaRow extends LitElement {
       (textColor ? `--secondary-text-color: ${textColor};` : '');
     return html`
       <mwc-list-item
-        hasMeta
+        ?hasMeta=${this.playing}
         ?selected=${this.selected}
         ?activated=${this.selected}
         class="button ${this.searchHighlight ? 'search-highlight' : ''}"
@@ -115,9 +115,8 @@ class MediaRow extends LitElement {
         .button {
           margin: 0.3rem;
           border-radius: 0.3rem;
-          background: var(--secondary-background-color);
-          --icon-width: 35px;
-          height: 40px;
+          height: 25px;
+          padding-inline: 0.1rem;
         }
 
         .button.search-highlight {

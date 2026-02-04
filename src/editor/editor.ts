@@ -8,6 +8,7 @@ import { GROUPS_SCHEMA } from './schema/groups-schema';
 import { GROUPING_SCHEMA } from './schema/grouping-schema';
 import { VOLUMES_SCHEMA } from './schema/volumes-schema';
 import { QUEUE_SCHEMA } from './schema/queue-schema';
+import { SEARCH_SCHEMA } from './schema/search-schema';
 import { isSonosCard } from '../utils/utils';
 import './tabs/common-tab';
 import './tabs/player-tab';
@@ -23,6 +24,7 @@ enum Tab {
   GROUPING = 'Grouping',
   VOLUMES = 'Volumes',
   QUEUE = 'Queue',
+  SEARCH = 'Search',
 }
 
 class CardEditor extends BaseEditor {
@@ -122,6 +124,7 @@ class CardEditor extends BaseEditor {
       [Tab.GROUPING, () => t(GROUPING_SCHEMA, 'grouping')],
       [Tab.VOLUMES, () => t(VOLUMES_SCHEMA, 'volumes')],
       [Tab.QUEUE, () => t(QUEUE_SCHEMA, 'queue')],
+      [Tab.SEARCH, () => t(SEARCH_SCHEMA, 'search')],
     ]);
   }
 

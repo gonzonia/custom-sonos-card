@@ -280,15 +280,23 @@ export default class MediaControlService {
     }
   }
 
+  // Needed for playing queue items, example:
+  // x-sonos-spotify:spotify%3atrack%3a6KfyfEiMAQJrMhRrP2Epm4?sid=12&flags=8232&sn=2
+  // to
+  // spotify:track:6KfyfEiMAQJrMhRrP2Epm4
   private transformMediaContentId(id: string): string {
     if (!id) {
       return '';
     }
     try {
       const withoutQuery = id.split('?')[0];
-      const colonIndex = withoutQuery.indexOf(':');
-      const withoutPrefix = colonIndex !== -1 ? withoutQuery.substring(colonIndex + 1) : withoutQuery;
-      return decodeURIComponent(withoutPrefix);
+      const decoded = decodeURIComponent(withoutQuery);
+      const colonMatches = decoded.match(/:/g);
+      if (colonMatches && colonMatches.length >= 2) {
+        const firstColonIndex = decoded.indexOf(':');
+        return decoded.substring(firstColonIndex + 1);
+      }
+      return decoded;
     } catch {
       return id;
     }

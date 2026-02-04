@@ -25,8 +25,9 @@ This card, Maxi Media Player, is a generalisation of the [Sonos Card](https://gi
 - Configurable styling
 - Dynamic volume level slider
 - Track progress bar
-- Show, play and remove tracks of play queue <!-- //#ONLY_SONOS_CARD -->
+- Show, play and rearrange tracks in play queue <!-- //#ONLY_SONOS_CARD -->
 - Set and clear sleep timer <!-- //#ONLY_SONOS_CARD -->
+- Search for music via Music Assistant
 
 and more!
 
@@ -83,6 +84,7 @@ sections: # Choose which sections to show in the card. Available sections are:
   - media browser
   - player
   - queue
+  - search
 ```
 
 <!-- //#ONLY_SONOS_CARD_END -->
@@ -395,6 +397,29 @@ queue:
 ```
 
 <!-- //#ONLY_SONOS_CARD_END -->
+
+### Search Configuration
+
+The Search section allows you to search for music using the [Music Assistant](https://music-assistant.io/) integration. You must have Music Assistant installed and configured in Home Assistant to use this feature.
+
+```yaml
+search:
+  title: Search # default is 'Search'. Use this to change the title for the search section.
+  massConfigEntryId: '' # Leave empty to auto-discover Music Assistant. Only needed if you have multiple Music Assistant instances.
+  defaultMediaType: track # default is none. Pre-select a media type (track, artist, album, playlist).
+  searchLimit: 50 # default is 50. Maximum number of results to show per search.
+  autoSearchMinChars: 3 # default is 3. Minimum characters before auto-search triggers.
+  autoSearchDebounceMs: 1000 # default is 1000. Delay in milliseconds before auto-search executes.
+```
+
+**Search Features:**
+- Search for tracks, artists, albums, or playlists
+- Auto-search as you type (configurable)
+- Select multiple items and play or queue them
+- State persists when switching sections
+
+**Limitations:**
+- Does not support library items, only streaming content (e.g. Spotify)
 
 ## Using individual section cards
 

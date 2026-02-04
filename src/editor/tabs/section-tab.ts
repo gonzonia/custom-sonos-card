@@ -2,7 +2,7 @@ import { html, TemplateResult } from 'lit';
 import { property } from 'lit/decorators.js';
 import { BaseEditor, Schema } from '../base-editor';
 
-type SectionKey = 'groups' | 'grouping' | 'volumes' | 'queue';
+type SectionKey = 'groups' | 'grouping' | 'volumes' | 'queue' | 'search';
 
 class SectionTab extends BaseEditor {
   @property({ attribute: false }) schema!: Schema[];

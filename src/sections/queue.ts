@@ -4,18 +4,13 @@ import Store from '../model/store';
 import { MediaPlayer } from '../model/media-player';
 import { listStyle, MEDIA_ITEM_SELECTED } from '../constants';
 import { customEvent } from '../utils/utils';
-import {
-  mdiAnimationPlay,
-  mdiCloseBoxMultipleOutline,
-  mdiHumanQueue,
-  mdiPlaylistEdit,
-  mdiSelectInverse,
-  mdiTrashCanOutline,
-} from '@mdi/js';
+import { updateSelection, invertSelection, clearSelection } from '../utils/selection-utils';
+import { mdiCloseBoxMultipleOutline, mdiPlaylistEdit, mdiTrashCanOutline } from '@mdi/js';
 import '../components/media-row';
 import '../components/queue-search';
-import { QueueSearchMatch } from '../types/queue-search';
-import { MediaPlayerItem } from '../types';
+import '../components/selection-actions';
+import '../components/operation-overlay';
+import { QueueSearchMatch, MediaPlayerItem, OperationProgress } from '../types';
 import { queueStyles } from './queue.styles';
 
 export class Queue extends LitElement {
@@ -30,7 +25,7 @@ export class Queue extends LitElement {
   @state() private selectedIndices = new Set<number>();
   @state() private queueItems: MediaPlayerItem[] = [];
   @state() private loading = true;
-  @state() private operationProgress: { current: number; total: number; label: string } | null = null;
+  @state() private operationProgress: OperationProgress | null = null;
   @state() private cancelOperation = false;
   private lastQueueHash = '';
 
@@ -85,23 +80,11 @@ export class Queue extends LitElement {
     const selected = queuePosition ? queuePosition - 1 : -1;
     return html`
       <div class="queue-container" @keydown=${this.onKeyDown} tabindex="-1">
-        ${this.operationProgress
-          ? html`<div class="operation-overlay">
-              <div class="operation-overlay-content">
-                <ha-spinner></ha-spinner>
-                <div class="operation-progress-text">
-                  ${this.operationProgress.total > 1
-                    ? `${this.operationProgress.label} ${this.operationProgress.current} of ${this.operationProgress.total}`
-                    : `${this.operationProgress.label}...`}
-                </div>
-                <ha-control-button-group>
-                  <ha-control-button class="accent" @click=${this.cancelCurrentOperation}>
-                    ${this.store.hass.localize('ui.common.cancel') || 'Cancel'}
-                  </ha-control-button>
-                </ha-control-button-group>
-              </div>
-            </div>`
-          : nothing}
+        <sonos-operation-overlay
+          .progress=${this.operationProgress}
+          .hass=${this.store.hass}
+          @cancel-operation=${this.cancelCurrentOperation}
+        ></sonos-operation-overlay>
         ${this.renderQueue(selected)}
       </div>
     `;
@@ -112,9 +95,13 @@ export class Queue extends LitElement {
     // If showOnlyMatches is enabled, filter queueItems and map indices
     const displayItems = this.showOnlyMatches ? this.shownIndices.map((i) => this.queueItems[i]) : this.queueItems;
     const indexMap = this.showOnlyMatches ? this.shownIndices : null;
+    const itemCount = this.queueItems.length;
     return html`
       <div class="header">
-        <div class="title">${this.queueTitle}</div>
+        <div class="title-container">
+          <span class="title">${this.queueTitle}</span>
+          ${itemCount > 0 ? html`<span class="item-count">(${itemCount} items)</span>` : ''}
+        </div>
         <div class="header-icons">
           <sonos-queue-search
             .items=${this.queueItems}
@@ -126,27 +113,19 @@ export class Queue extends LitElement {
           ></sonos-queue-search>
           ${this.selectMode
             ? html`
-                <ha-icon-button
-                  .path=${mdiSelectInverse}
-                  @click=${this.invertSelection}
-                  title="Invert selection"
-                ></ha-icon-button>
+                <sonos-selection-actions
+                  .hasSelection=${hasSelection}
+                  .disabled=${this.operationProgress !== null}
+                  @invert-selection=${this.handleInvertSelection}
+                  @play-selected=${this.playSelected}
+                  @queue-selected=${this.queueSelectedAfterCurrent}
+                ></sonos-selection-actions>
                 ${hasSelection
                   ? html`<ha-icon-button
-                        .path=${mdiAnimationPlay}
-                        @click=${this.playSelected}
-                        title="Play selected"
-                      ></ha-icon-button>
-                      <ha-icon-button
-                        .path=${mdiHumanQueue}
-                        @click=${this.queueSelectedAfterCurrent}
-                        title="Queue selected after current"
-                      ></ha-icon-button>
-                      <ha-icon-button
-                        .path=${mdiCloseBoxMultipleOutline}
-                        @click=${this.deleteSelected}
-                        title="Delete selected"
-                      ></ha-icon-button>`
+                      .path=${mdiCloseBoxMultipleOutline}
+                      @click=${this.deleteSelected}
+                      title="Delete selected"
+                    ></ha-icon-button>`
                   : nothing}
                 <div class="delete-all-btn" @click=${this.clearQueue} title="Delete all">
                   <ha-icon-button .path=${mdiTrashCanOutline}></ha-icon-button>
@@ -318,14 +297,8 @@ export class Queue extends LitElement {
     this.selectedIndices = new Set([...this.selectedIndices, ...this.searchMatchIndices]);
   }
 
-  private invertSelection() {
-    const newSelection = new Set<number>();
-    for (let i = 0; i < this.queueItems.length; i++) {
-      if (!this.selectedIndices.has(i)) {
-        newSelection.add(i);
-      }
-    }
-    this.selectedIndices = newSelection;
+  private handleInvertSelection() {
+    this.selectedIndices = invertSelection(this.selectedIndices, this.queueItems.length);
   }
 
   private onMediaItemClick = async (index: number) => {
@@ -340,12 +313,7 @@ export class Queue extends LitElement {
   };
 
   private onCheckboxChange(index: number, checked: boolean) {
-    if (checked) {
-      this.selectedIndices.add(index);
-    } else {
-      this.selectedIndices.delete(index);
-    }
-    this.selectedIndices = new Set(this.selectedIndices); // Trigger reactivity
+    this.selectedIndices = updateSelection(this.selectedIndices, index, checked);
   }
 
   private onKeyDown(e: KeyboardEvent) {
@@ -359,13 +327,13 @@ export class Queue extends LitElement {
       this.exitSelectMode();
     } else {
       this.selectMode = true;
-      this.selectedIndices = new Set();
+      this.selectedIndices = clearSelection();
     }
   }
 
   private exitSelectMode() {
     this.selectMode = false;
-    this.selectedIndices = new Set();
+    this.selectedIndices = clearSelection();
   }
 
   private cancelCurrentOperation() {
@@ -452,6 +420,6 @@ export class Queue extends LitElement {
   }
 
   static get styles() {
-    return [listStyle, queueStyles];
+    return [listStyle, ...queueStyles];
   }
 }
