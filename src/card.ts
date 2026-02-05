@@ -264,9 +264,11 @@ export class Card extends LitElement {
             ? GROUPS
             : sections.includes(GROUPING)
               ? GROUPING
-              : sections.includes(QUEUE) && isSonosCard(newConfig)
-                ? QUEUE
-                : VOLUMES;
+              : sections.includes(SEARCH)
+                ? SEARCH
+                : sections.includes(QUEUE) && isSonosCard(newConfig)
+                  ? QUEUE
+                  : VOLUMES;
     } else {
       this.section = PLAYER;
     }
@@ -278,7 +280,7 @@ export class Card extends LitElement {
     if (newConfig.entities?.length && newConfig.entities[0].entity) {
       newConfig.entities = newConfig.entities.map((entity: { entity: string }) => entity.entity);
     }
-    if (isSonosCard(newConfig)) {
+    if (isSonosCard(newConfig) && newConfig.entityPlatform === undefined) {
       newConfig.entityPlatform = 'sonos';
       if (newConfig.showNonSonosPlayers) {
         newConfig.entityPlatform = undefined;
