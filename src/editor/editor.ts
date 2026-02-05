@@ -2,7 +2,6 @@ import { css, html, TemplateResult } from 'lit';
 import { state } from 'lit/decorators.js';
 import { choose } from 'lit/directives/choose.js';
 import { mdiChevronLeft, mdiChevronRight } from '@mdi/js';
-import { Section } from '../types';
 import { BaseEditor } from './base-editor';
 import { GROUPS_SCHEMA } from './schema/groups-schema';
 import { GROUPING_SCHEMA } from './schema/grouping-schema';
@@ -67,12 +66,6 @@ class CardEditor extends BaseEditor {
   protected render(): TemplateResult {
     if (!this.config) {
       return html``;
-    }
-    if (!this.config.sections || this.config.sections.length === 0) {
-      this.config.sections = [Section.PLAYER, Section.VOLUMES, Section.GROUPS, Section.GROUPING, Section.MEDIA_BROWSER];
-      if (isSonosCard(this.config)) {
-        this.config.sections.push(Section.QUEUE);
-      }
     }
     const tabs = this.tabs;
     const activeIndex = this.activeTabIndex;
