@@ -29,7 +29,10 @@ export class Player extends LitElement {
     this.resolveTemplateImageUrlIfNeeded();
     this.preloadImageIfNeeded();
     const blurAmount = this.playerConfig.artworkAsBackgroundBlur ?? 0;
-    const artworkAsBackground = this.playerConfig.artworkAsBackground || blurAmount > 0;
+    const artworkAsBackgroundConfig = this.playerConfig.artworkAsBackground || blurAmount > 0;
+    // Only show artwork background when there's actual artwork (not fallback)
+    const hasRealArtwork = this.getArtworkImage().entityImage && this.imageLoaded;
+    const artworkAsBackground = artworkAsBackgroundConfig && hasRealArtwork;
     const backgroundOpacity = this.playerConfig.controlsAndHeaderBackgroundOpacity ?? 0.9;
     const backgroundOverlayColor = this.playerConfig.backgroundOverlayColor;
     const containerStyle = artworkAsBackground
