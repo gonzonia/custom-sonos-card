@@ -1,12 +1,13 @@
 import { css, html, LitElement, nothing, PropertyValues } from 'lit';
 import { property } from 'lit/decorators.js';
 import { classMap } from 'lit/directives/class-map.js';
-import { mdiHumanQueue } from '@mdi/js';
+import { mdiSkipNext } from '@mdi/js';
 import Store from '../model/store';
 import { MediaPlayerItem } from '../types';
 import { mediaItemTitleStyle } from '../constants';
 import { renderFavoritesItem } from '../utils/media-browse-utils';
 import './playing-bars';
+import { customEvent } from '../utils/utils';
 
 class MediaRow extends LitElement {
   @property({ attribute: false }) store!: Store;
@@ -46,7 +47,7 @@ class MediaRow extends LitElement {
               : this.showQueueButton
                 ? html`<ha-icon-button
                     class=${classMap({ 'queue-btn': true, disabled: this.queueButtonDisabled })}
-                    .path=${mdiHumanQueue}
+                    .path=${mdiSkipNext}
                     ?disabled=${this.queueButtonDisabled}
                     @click=${this.onQueueClick}
                   ></ha-icon-button>`
@@ -64,23 +65,12 @@ class MediaRow extends LitElement {
 
   private onCheckboxChange(e: Event) {
     const checkbox = e.target as HTMLInputElement;
-    this.dispatchEvent(
-      new CustomEvent('checkbox-change', {
-        detail: { checked: checkbox.checked },
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    this.dispatchEvent(customEvent('checkbox-change', { checked: checkbox.checked }));
   }
 
   private onQueueClick(e: Event) {
     e.stopPropagation();
-    this.dispatchEvent(
-      new CustomEvent('queue-item', {
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    this.dispatchEvent(customEvent('queue-item'));
   }
 
   protected async firstUpdated(_changedProperties: PropertyValues) {

@@ -200,7 +200,7 @@ export default class MediaControlService {
     await this.hassService.callMediaService('select_source', { source: source, entity_id: mediaPlayer.id });
   }
 
-  async playMedia(mediaPlayer: MediaPlayer, item: MediaPlayerItem, enqueue?: 'add' | 'next' | 'replace') {
+  async playMedia(mediaPlayer: MediaPlayer, item: MediaPlayerItem, enqueue?: 'add' | 'next' | 'replace' | 'play') {
     const mediaContentId = enqueue
       ? this.transformMediaContentId(item.media_content_id ?? '')
       : (item.media_content_id ?? '');
@@ -257,9 +257,41 @@ export default class MediaControlService {
     }
   }
 
-  async replaceQueueAndPlay(
+  async moveQueueItemsToEnd(
     mediaPlayer: MediaPlayer,
     items: MediaPlayerItem[],
+    indices: number[],
+    onProgress?: (completed: number) => void,
+    shouldCancel?: () => boolean,
+  ) {
+    // First, add all items to the end of the queue
+    let completed = 0;
+    for (const index of indices) {
+      if (shouldCancel?.()) {
+        return;
+      }
+      const item = items[index];
+      if (item?.media_content_id) {
+        await this.playMedia(mediaPlayer, item, 'add');
+      }
+      completed++;
+      onProgress?.(completed);
+    }
+
+    // Then remove original positions in reverse order (to preserve indices)
+    const reversedIndices = [...indices].reverse();
+    for (const originalIndex of reversedIndices) {
+      if (shouldCancel?.()) {
+        return;
+      }
+      await this.hassService.removeFromQueue(mediaPlayer, originalIndex);
+    }
+  }
+
+  async queueAndPlay(
+    mediaPlayer: MediaPlayer,
+    items: MediaPlayerItem[],
+    enqueueMode: 'replace' | 'play',
     onProgress?: (completed: number) => void,
     shouldCancel?: () => boolean,
   ) {
@@ -268,15 +300,16 @@ export default class MediaControlService {
     }
 
     const [firstItem, ...restItems] = items;
-    await this.playMedia(mediaPlayer, firstItem, 'replace');
+    await this.playMedia(mediaPlayer, firstItem, enqueueMode);
     onProgress?.(1);
 
-    for (let i = 0; i < restItems.length; i++) {
+    // Add remaining items in reverse order with 'next' so they appear in correct sequence
+    for (let i = restItems.length - 1; i >= 0; i--) {
       if (shouldCancel?.()) {
         return;
       }
-      await this.playMedia(mediaPlayer, restItems[i], 'add');
-      onProgress?.(i + 2);
+      await this.playMedia(mediaPlayer, restItems[i], 'next');
+      onProgress?.(restItems.length - i + 1);
     }
   }
 

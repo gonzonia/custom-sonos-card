@@ -1,14 +1,15 @@
 import { html, LitElement, nothing, PropertyValues } from 'lit';
-import { property, state, query } from 'lit/decorators.js';
+import { property, query, state } from 'lit/decorators.js';
 import Store from '../model/store';
 import { listStyle, MEDIA_ITEM_SELECTED } from '../constants';
 import { customEvent } from '../utils/utils';
-import { updateSelection, invertSelection, clearSelection } from '../utils/selection-utils';
+import { clearSelection, invertSelection, updateSelection } from '../utils/selection-utils';
+import { queueItemsAfterCurrent, queueItemsAtEnd } from '../utils/batch-operation-utils';
 import { mdiAccount, mdiAlbum, mdiClose, mdiMagnify, mdiMusic, mdiPlaylistMusic } from '@mdi/js';
 import '../components/media-row';
 import '../components/operation-overlay';
 import '../components/selection-actions';
-import { SearchMediaType, SearchResultItem, MediaPlayerItem, OperationProgress } from '../types';
+import { MediaPlayerItem, OperationProgress, SearchMediaType, SearchResultItem } from '../types';
 import { MusicAssistantService } from '../services/music-assistant-service';
 import { searchStyles } from './search.styles';
 
@@ -205,6 +206,7 @@ export class Search extends LitElement {
             @invert-selection=${this.handleInvertSelection}
             @play-selected=${this.playSelected}
             @queue-selected=${this.queueSelectedAfterCurrent}
+            @queue-selected-at-end=${this.queueSelectedAtEnd}
           ></sonos-selection-actions>
         </div>
       </div>
@@ -383,7 +385,7 @@ export class Search extends LitElement {
     }
 
     const mediaPlayerItem = this.toMediaPlayerItem(item);
-    await this.store.mediaControlService.playMedia(this.store.activePlayer, mediaPlayerItem);
+    await this.store.mediaControlService.playMedia(this.store.activePlayer, mediaPlayerItem, 'play');
     this.dispatchEvent(customEvent(MEDIA_ITEM_SELECTED));
   }
 
@@ -395,23 +397,20 @@ export class Search extends LitElement {
     this.selectedIndices = invertSelection(this.selectedIndices, this.results.length);
   }
 
-  private async playSelected() {
-    const selectedIndices = Array.from(this.selectedIndices).sort((a, b) => a - b);
-    if (selectedIndices.length === 0) {
-      return;
-    }
+  private getSelectedItems(): MediaPlayerItem[] {
+    return Array.from(this.selectedIndices)
+      .sort((a, b) => a - b)
+      .map((i) => this.toMediaPlayerItem(this.results[i]));
+  }
 
-    const items = selectedIndices.map((i) => this.toMediaPlayerItem(this.results[i]));
-    const total = items.length;
-    this.operationProgress = { current: 0, total, label: 'Loading' };
+  private async runBatchOperation(
+    operation: (onProgress: (completed: number) => void, shouldCancel: () => boolean) => Promise<void>,
+  ) {
     this.cancelOperation = false;
-
     try {
-      await this.store.mediaControlService.replaceQueueAndPlay(
-        this.store.activePlayer,
-        items,
+      await operation(
         (completed) => {
-          this.operationProgress = { current: completed, total, label: 'Loading' };
+          this.operationProgress = { ...this.operationProgress!, current: completed };
         },
         () => this.cancelOperation,
       );
@@ -425,33 +424,53 @@ export class Search extends LitElement {
     }
   }
 
-  private async queueSelectedAfterCurrent() {
-    const selectedIndices = Array.from(this.selectedIndices).sort((a, b) => a - b);
-    if (selectedIndices.length === 0) {
+  private async playSelected() {
+    const items = this.getSelectedItems();
+    if (items.length === 0) {
       return;
     }
 
-    const items = selectedIndices.map((i) => this.toMediaPlayerItem(this.results[i]));
-    const total = items.length;
-    this.operationProgress = { current: 0, total, label: 'Queueing' };
-    this.cancelOperation = false;
+    this.operationProgress = { current: 0, total: items.length, label: 'Loading' };
 
-    try {
-      // Queue items in reverse order so they end up in the correct order
-      for (let i = items.length - 1; i >= 0; i--) {
-        if (this.cancelOperation) {
-          return;
-        }
-        await this.store.mediaControlService.playMedia(this.store.activePlayer, items[i], 'next');
-        this.operationProgress = { current: total - i, total, label: 'Queueing' };
-      }
-      if (!this.cancelOperation) {
-        this.selectedIndices = clearSelection();
-      }
-    } finally {
-      this.operationProgress = null;
-      this.cancelOperation = false;
+    await this.runBatchOperation((onProgress, shouldCancel) =>
+      this.store.mediaControlService.queueAndPlay(this.store.activePlayer, items, 'play', onProgress, shouldCancel),
+    );
+  }
+
+  private async queueSelectedAfterCurrent() {
+    const items = this.getSelectedItems();
+    if (items.length === 0) {
+      return;
     }
+
+    this.operationProgress = { current: 0, total: items.length, label: 'Queueing' };
+
+    await this.runBatchOperation((onProgress, shouldCancel) =>
+      queueItemsAfterCurrent(
+        items,
+        (item) => this.store.mediaControlService.playMedia(this.store.activePlayer, item, 'next'),
+        onProgress,
+        shouldCancel,
+      ),
+    );
+  }
+
+  private async queueSelectedAtEnd() {
+    const items = this.getSelectedItems();
+    if (items.length === 0) {
+      return;
+    }
+
+    this.operationProgress = { current: 0, total: items.length, label: 'Queueing' };
+
+    await this.runBatchOperation((onProgress, shouldCancel) =>
+      queueItemsAtEnd(
+        items,
+        (item) => this.store.mediaControlService.playMedia(this.store.activePlayer, item, 'add'),
+        onProgress,
+        shouldCancel,
+      ),
+    );
   }
 
   private cancelCurrentOperation() {

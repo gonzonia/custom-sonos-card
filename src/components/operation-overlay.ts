@@ -2,6 +2,7 @@ import { css, html, LitElement, nothing } from 'lit';
 import { property } from 'lit/decorators.js';
 import { HomeAssistant } from 'custom-card-helpers';
 import { OperationProgress } from '../types';
+import { customEvent } from '../utils/utils';
 
 export class OperationOverlay extends LitElement {
   @property({ attribute: false }) progress?: OperationProgress;
@@ -33,12 +34,7 @@ export class OperationOverlay extends LitElement {
   }
 
   private onCancel() {
-    this.dispatchEvent(
-      new CustomEvent('cancel-operation', {
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    this.dispatchEvent(customEvent('cancel-operation'));
   }
 
   static get styles() {
