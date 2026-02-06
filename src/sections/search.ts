@@ -487,5 +487,3 @@ export class Search extends LitElement {
     return [listStyle, ...searchStyles];
   }
 }
-
-customElements.define('sonos-search', Search);
