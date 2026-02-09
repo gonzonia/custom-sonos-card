@@ -95,9 +95,10 @@ class Progress extends LitElement {
   }
 }
 
-const convertProgress = (duration: number) => {
+export const convertProgress = (duration: number) => {
   const date = new Date(duration * 1000).toISOString().substring(11, 19);
-  return date.startsWith('00:') ? date.substring(3) : date;
+  const time = date.startsWith('00:') ? date.substring(3) : date;
+  return time.replace(/^0(\d)/, '$1');
 };
 
 customElements.define('sonos-progress', Progress);
