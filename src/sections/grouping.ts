@@ -20,6 +20,8 @@ export class Grouping extends LitElement {
   private joinedPlayers!: string[];
   @state() modifiedItems: string[] = [];
   @state() selectedPredefinedGroup?: PredefinedGroup;
+  @state() private applying = false;
+  @state() private appliedGroupingItems?: GroupingItem[];
   private config!: CardConfig;
   private groupingConfig!: GroupingConfig;
 
@@ -29,7 +31,8 @@ export class Grouping extends LitElement {
     this.activePlayer = this.store.activePlayer;
     this.mediaControlService = this.store.mediaControlService;
     this.mediaPlayerIds = this.store.allMediaPlayers.map((player) => player.id);
-    this.groupingItems = this.getGroupingItems();
+    this.groupingItems =
+      this.applying && this.appliedGroupingItems ? this.appliedGroupingItems : this.getGroupingItems();
     this.notJoinedPlayers = this.getNotJoinedPlayers();
     this.joinedPlayers = this.getJoinedPlayers();
 
@@ -51,13 +54,13 @@ export class Grouping extends LitElement {
             : html`${this.renderJoinAllButton()} ${this.renderUnJoinAllButton()}`}
           ${when(this.store.predefinedGroups, () => this.renderPredefinedGroups())}
         </div>
-        <div class="list">
+        <div class="list" disabled=${this.applying || nothing}>
           ${this.groupingItems.map((item) => {
             return html`
               <div
                 class="item"
                 modified=${item.isModified || nothing}
-                disabled=${item.isDisabled || nothing}
+                disabled=${(item.isDisabled || this.applying) || nothing}
                 compact=${this.groupingConfig.compact || nothing}
               >
                 <ha-icon
@@ -82,19 +85,21 @@ export class Grouping extends LitElement {
             `;
           })}
         </div>
-        <ha-control-button-group
-          class="buttons"
-          hide=${(this.modifiedItems.length === 0 && !this.selectedPredefinedGroup) ||
-          this.groupingConfig.skipApplyButton ||
-          nothing}
-        >
-          <ha-control-button class="apply" @click=${this.applyGrouping}>
-            ${this.store.hass.localize('ui.common.apply') || 'Apply'}
-          </ha-control-button>
-          <ha-control-button @click=${this.cancelGrouping}>
-            ${this.store.hass.localize('ui.common.cancel') || 'Cancel'}
-          </ha-control-button>
-        </ha-control-button-group>
+        ${this.applying
+          ? html`<div class="applying"><ha-spinner></ha-spinner></div>`
+          : html`<ha-control-button-group
+              class="buttons"
+              hide=${(this.modifiedItems.length === 0 && !this.selectedPredefinedGroup) ||
+              this.groupingConfig.skipApplyButton ||
+              nothing}
+            >
+              <ha-control-button class="apply" @click=${this.applyGrouping}>
+                ${this.store.hass.localize('ui.common.apply') || 'Apply'}
+              </ha-control-button>
+              <ha-control-button @click=${this.cancelGrouping}>
+                ${this.store.hass.localize('ui.common.cancel') || 'Cancel'}
+              </ha-control-button>
+            </ha-control-button-group>`}
       </div>
     `;
   }
@@ -184,12 +189,19 @@ export class Grouping extends LitElement {
         .volume {
           --accent-color: var(--secondary-text-color);
         }
+
+        .applying {
+          display: flex;
+          justify-content: center;
+          padding: 0.5rem;
+          flex-shrink: 0;
+        }
       `,
     ];
   }
 
   toggleItem(item: GroupingItem) {
-    if (item.isDisabled) {
+    if (item.isDisabled || this.applying) {
       return;
     }
     this.toggleItemWithoutDisabledCheck(item);
@@ -205,33 +217,55 @@ export class Grouping extends LitElement {
   }
 
   async applyGrouping() {
+    if (this.applying) {
+      return;
+    }
     const groupingItems = this.groupingItems;
     const joinedPlayers = this.joinedPlayers;
     const activePlayerId = this.activePlayer.id;
     const { unJoin, join, newMainPlayer } = getGroupingChanges(groupingItems, joinedPlayers, activePlayerId);
-    this.modifiedItems = [];
     const selectedPredefinedGroup = this.selectedPredefinedGroup;
+
+    // Snapshot the intended end-state before clearing modifications
+    this.appliedGroupingItems = groupingItems.map((item) => {
+      const snapshot = new GroupingItem(item.player, this.activePlayer, false);
+      snapshot.isSelected = item.isSelected;
+      snapshot.isModified = false;
+      snapshot.isDisabled = item.isDisabled;
+      snapshot.icon = item.isSelected ? 'check-circle' : 'checkbox-blank-circle-outline';
+      return snapshot;
+    });
+    this.applying = true;
+    this.modifiedItems = [];
     this.selectedPredefinedGroup = undefined;
 
-    if (join.length > 0) {
-      await this.mediaControlService.join(newMainPlayer, join);
-    }
-    if (unJoin.length > 0) {
-      await this.mediaControlService.unJoin(unJoin);
-    }
-    if (selectedPredefinedGroup) {
-      await this.mediaControlService.activatePredefinedGroup(selectedPredefinedGroup);
-    }
+    try {
+      if (join.length > 0) {
+        await this.mediaControlService.join(newMainPlayer, join);
+      }
+      if (unJoin.length > 0) {
+        await this.mediaControlService.unJoin(unJoin);
+      }
+      if (selectedPredefinedGroup) {
+        await this.mediaControlService.activatePredefinedGroup(selectedPredefinedGroup);
+      }
 
-    if (newMainPlayer !== activePlayerId && !this.groupingConfig.dontSwitchPlayer) {
-      dispatchActivePlayerId(newMainPlayer, this.config, this);
-    }
-    if (this.config.entityId && unJoin.includes(this.config.entityId) && this.groupingConfig.dontSwitchPlayer) {
-      dispatchActivePlayerId(this.config.entityId, this.config, this);
+      if (newMainPlayer !== activePlayerId && !this.groupingConfig.dontSwitchPlayer) {
+        dispatchActivePlayerId(newMainPlayer, this.config, this);
+      }
+      if (this.config.entityId && unJoin.includes(this.config.entityId) && this.groupingConfig.dontSwitchPlayer) {
+        dispatchActivePlayerId(this.config.entityId, this.config, this);
+      }
+    } finally {
+      this.applying = false;
+      this.appliedGroupingItems = undefined;
     }
   }
 
   private cancelGrouping() {
+    if (this.applying) {
+      return;
+    }
     this.modifiedItems = [];
   }
 
