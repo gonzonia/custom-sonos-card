@@ -60,7 +60,7 @@ export class Grouping extends LitElement {
               <div
                 class="item"
                 modified=${item.isModified || nothing}
-                disabled=${(item.isDisabled || this.applying) || nothing}
+                disabled=${item.isDisabled || this.applying || nothing}
                 compact=${this.groupingConfig.compact || nothing}
               >
                 <ha-icon
