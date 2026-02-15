@@ -90,9 +90,8 @@ export class MediaBrowser extends LitElement {
     localStorage.setItem(LAYOUT_KEY, layout);
   }
 
-  private handleMenuAction = (ev: CustomEvent<{ index: number }>) => {
-    const layouts: LayoutType[] = ['auto', 'grid', 'list'];
-    this.setLayout(layouts[ev.detail.index]);
+  private handleMenuAction = (ev: CustomEvent<{ item: { value: string } }>) => {
+    this.setLayout(ev.detail.item.value as LayoutType);
   };
 
   private getStartPath(): string | null {
@@ -255,29 +254,21 @@ export class MediaBrowser extends LitElement {
 
   private renderLayoutMenu() {
     return html`
-      <ha-button-menu fixed corner="BOTTOM_END" @action=${this.handleMenuAction}>
+      <ha-dropdown @wa-select=${this.handleMenuAction}>
         <ha-icon-button slot="trigger" .path=${mdiDotsVertical}></ha-icon-button>
-        <ha-list-item graphic="icon">
+        <ha-dropdown-item value="auto" .selected=${this.layout === 'auto'}>
+          <ha-svg-icon slot="icon" .path=${mdiAlphaABoxOutline}></ha-svg-icon>
           Auto
-          <ha-svg-icon
-            class=${this.layout === 'auto' ? 'selected' : ''}
-            slot="graphic"
-            .path=${mdiAlphaABoxOutline}
-          ></ha-svg-icon>
-        </ha-list-item>
-        <ha-list-item graphic="icon">
+        </ha-dropdown-item>
+        <ha-dropdown-item value="grid" .selected=${this.layout === 'grid'}>
+          <ha-svg-icon slot="icon" .path=${mdiGrid}></ha-svg-icon>
           Grid
-          <ha-svg-icon class=${this.layout === 'grid' ? 'selected' : ''} slot="graphic" .path=${mdiGrid}></ha-svg-icon>
-        </ha-list-item>
-        <ha-list-item graphic="icon">
+        </ha-dropdown-item>
+        <ha-dropdown-item value="list" .selected=${this.layout === 'list'}>
+          <ha-svg-icon slot="icon" .path=${mdiListBoxOutline}></ha-svg-icon>
           List
-          <ha-svg-icon
-            class=${this.layout === 'list' ? 'selected' : ''}
-            slot="graphic"
-            .path=${mdiListBoxOutline}
-          ></ha-svg-icon>
-        </ha-list-item>
-      </ha-button-menu>
+        </ha-dropdown-item>
+      </ha-dropdown>
     `;
   }
 
@@ -503,9 +494,6 @@ export class MediaBrowser extends LitElement {
       .no-items {
         text-align: center;
         margin-top: 50%;
-      }
-      ha-svg-icon.selected {
-        color: var(--primary-color);
       }
       ha-icon-button.startpath-active {
         color: var(--accent-color);

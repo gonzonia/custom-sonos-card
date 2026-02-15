@@ -4,14 +4,11 @@ import type { HomeAssistant } from 'custom-card-helpers';
 export interface BrandsUrlOptions {
     domain: string;
     type: string;
-    useFallback?: boolean;
     darkOptimized?: boolean;
 }
 
-export const brandsUrl = (options: BrandsUrlOptions): string => {
-    const { domain, type, useFallback = true, darkOptimized = false } = options;
-    return `https://brands.home-assistant.io/${useFallback ? '_/' : ''}${domain}/${darkOptimized ? 'dark_' : ''}${type}.png`;
-};
+export const brandsUrl = (options: BrandsUrlOptions): string =>
+    `https://brands.home-assistant.io/_/${options.domain}/${options.darkOptimized ? 'dark_' : ''}${options.type}.png`;
 
 export const isBrandUrl = (url?: string): boolean => {
     return url?.startsWith('https://brands.home-assistant.io/') ?? false;
