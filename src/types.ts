@@ -238,6 +238,7 @@ export interface CustomFavoriteThumbnails {
 export interface MediaPlayerItem extends Partial<UpstreamMediaPlayerItem> {
   title: string;
   favoriteType?: string;
+  queueItemId?: string; // Music Assistant queue item ID for remove/play operations
 }
 
 export interface PredefinedGroup<T = PredefinedGroupPlayer> {
@@ -290,6 +291,67 @@ export interface QueueItem {
   media_content_type: string;
 }
 
+export interface MusicAssistantQueueItem {
+  queue_item_id: string;
+  name: string;
+  duration: number;
+  media_item: {
+    media_type: string;
+    uri: string;
+    name: string;
+    version: string;
+    image: string | null;
+    favorite: boolean;
+    explicit: boolean;
+    artists?: { name: string }[];
+    album?: {
+      name: string;
+      image: string | null;
+    };
+  };
+}
+
+export interface MusicAssistantQueueResponse {
+  response: {
+    [entity_id: string]: {
+      queue_id: string;
+      active: boolean;
+      name: string;
+      items: number;
+      shuffle_enabled: boolean;
+      repeat_mode: string;
+      current_index: number;
+      elapsed_time: number;
+      current_item: MusicAssistantQueueItem | null;
+      next_item: MusicAssistantQueueItem | null;
+    };
+  };
+}
+
+export interface MusicAssistantQueueItemsResponse {
+  response: {
+    [entity_id: string]: MusicAssistantQueueItem[];
+  };
+}
+
+export interface MassQueueItem {
+  queue_item_id: string;
+  media_title: string;
+  media_album_name: string;
+  media_artist: string;
+  media_content_id: string;
+  media_image: string | null;
+  favorite: boolean;
+}
+
+export interface MassQueueResponse {
+  response: {
+    [entity_id: string]: MassQueueItem[];
+  };
+}
+
+export const MASS_QUEUE_NOT_INSTALLED = 'MASS_QUEUE_NOT_INSTALLED';
+
 export interface QueueSearchMatch {
   index: number;
   currentMatch: number;
@@ -297,7 +359,7 @@ export interface QueueSearchMatch {
   matchIndices: number[];
 }
 
-export type SearchMediaType = 'artist' | 'album' | 'track' | 'playlist';
+export type SearchMediaType = 'artist' | 'album' | 'track' | 'playlist' | 'radio';
 
 export interface SearchConfig {
   massConfigEntryId?: string;
@@ -313,11 +375,15 @@ export interface MusicAssistantSearchResult {
   name: string;
   uri: string;
   version?: string;
-  image?: {
-    path?: string;
-    provider?: string;
-    remotely_accessible?: boolean;
-  };
+  favorite?: boolean;
+  in_library?: boolean;
+  image?:
+    | string
+    | {
+        path?: string;
+        provider?: string;
+        remotely_accessible?: boolean;
+      };
   artists?: Array<{
     name: string;
     item_id: string;
@@ -342,6 +408,7 @@ export interface MusicAssistantSearchResponse {
   albums?: MusicAssistantSearchResult[];
   tracks?: MusicAssistantSearchResult[];
   playlists?: MusicAssistantSearchResult[];
+  radio?: MusicAssistantSearchResult[];
 }
 
 export interface ConfigEntry {
@@ -357,6 +424,10 @@ export interface SearchResultItem {
   uri: string;
   mediaType: SearchMediaType;
   imageUrl?: string;
+  favorite?: boolean;
+  inLibrary?: boolean;
+  itemId?: string;
+  provider?: string;
 }
 
 export interface OperationProgress {

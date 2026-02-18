@@ -65,6 +65,7 @@ interface MediaPlayerEntityAttributes extends HassEntityAttributeBase {
   sound_mode?: string;
   sound_mode_list?: string[];
   group_members?: string[];
+  active_queue?: string;
 }
 
 export interface MediaPlayerEntity extends HassEntityBase {

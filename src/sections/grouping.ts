@@ -3,7 +3,7 @@ import { property, state } from 'lit/decorators.js';
 import { when } from 'lit/directives/when.js';
 import MediaControlService from '../services/media-control-service';
 import Store from '../model/store';
-import { dispatchActivePlayerId, getGroupingChanges } from '../utils/utils';
+import { dispatchActivePlayerId, getGroupingChanges, getGroupPlayerIds } from '../utils/utils';
 import { listStyle } from '../constants';
 import { MediaPlayer } from '../model/media-player';
 import '../components/grouping-button';
@@ -21,25 +21,27 @@ export class Grouping extends LitElement {
   @state() modifiedItems: string[] = [];
   @state() selectedPredefinedGroup?: PredefinedGroup;
   @state() private applying = false;
-  @state() private appliedGroupingItems?: GroupingItem[];
+  private frozenGroupingItems?: GroupingItem[];
   private config!: CardConfig;
   private groupingConfig!: GroupingConfig;
 
   render() {
-    this.config = this.store.config;
-    this.groupingConfig = this.config.grouping ?? {};
-    this.activePlayer = this.store.activePlayer;
-    this.mediaControlService = this.store.mediaControlService;
-    this.mediaPlayerIds = this.store.allMediaPlayers.map((player) => player.id);
-    this.groupingItems =
-      this.applying && this.appliedGroupingItems ? this.appliedGroupingItems : this.getGroupingItems();
-    this.notJoinedPlayers = this.getNotJoinedPlayers();
-    this.joinedPlayers = this.getJoinedPlayers();
+    if (!this.applying) {
+      this.config = this.store.config;
+      this.groupingConfig = this.config.grouping ?? {};
+      this.activePlayer = this.store.activePlayer;
+      this.mediaControlService = this.store.mediaControlService;
+      this.mediaPlayerIds = this.store.allMediaPlayers.map((player) => player.id);
+      this.groupingItems = this.getGroupingItems();
+      this.notJoinedPlayers = this.getNotJoinedPlayers();
+      this.joinedPlayers = this.getJoinedPlayers();
 
-    if (this.groupingConfig.skipApplyButton && (this.modifiedItems.length > 0 || this.selectedPredefinedGroup)) {
-      this.applyGrouping();
+      if (this.groupingConfig.skipApplyButton && (this.modifiedItems.length > 0 || this.selectedPredefinedGroup)) {
+        this.applyGrouping();
+      }
     }
 
+    const items = this.frozenGroupingItems ?? this.groupingItems;
     const buttonFontSize = this.groupingConfig.buttonFontSize;
     return html`
       <style>
@@ -54,8 +56,8 @@ export class Grouping extends LitElement {
             : html`${this.renderJoinAllButton()} ${this.renderUnJoinAllButton()}`}
           ${when(this.store.predefinedGroups, () => this.renderPredefinedGroups())}
         </div>
-        <div class="list" disabled=${this.applying || nothing}>
-          ${this.groupingItems.map((item) => {
+        <div class="list">
+          ${items.map((item) => {
             return html`
               <div
                 class="item"
@@ -85,21 +87,21 @@ export class Grouping extends LitElement {
             `;
           })}
         </div>
-        ${this.applying
-          ? html`<div class="applying"><ha-spinner></ha-spinner></div>`
-          : html`<ha-control-button-group
-              class="buttons"
-              hide=${(this.modifiedItems.length === 0 && !this.selectedPredefinedGroup) ||
-              this.groupingConfig.skipApplyButton ||
-              nothing}
-            >
-              <ha-control-button class="apply" @click=${this.applyGrouping}>
-                ${this.store.hass.localize('ui.common.apply') || 'Apply'}
-              </ha-control-button>
-              <ha-control-button @click=${this.cancelGrouping}>
-                ${this.store.hass.localize('ui.common.cancel') || 'Cancel'}
-              </ha-control-button>
-            </ha-control-button-group>`}
+        ${this.applying ? html`<div class="applying"><ha-spinner></ha-spinner></div>` : nothing}
+        <ha-control-button-group
+          class="buttons"
+          hide=${this.applying ||
+          (this.modifiedItems.length === 0 && !this.selectedPredefinedGroup) ||
+          this.groupingConfig.skipApplyButton ||
+          nothing}
+        >
+          <ha-control-button class="apply" @click=${this.applyGrouping}>
+            ${this.store.hass.localize('ui.common.apply') || 'Apply'}
+          </ha-control-button>
+          <ha-control-button @click=${this.cancelGrouping}>
+            ${this.store.hass.localize('ui.common.cancel') || 'Cancel'}
+          </ha-control-button>
+        </ha-control-button-group>
       </div>
     `;
   }
@@ -115,6 +117,7 @@ export class Grouping extends LitElement {
           display: flex;
           flex-direction: column;
           height: 100%;
+          position: relative;
         }
 
         .predefined-groups {
@@ -138,7 +141,7 @@ export class Grouping extends LitElement {
         }
 
         .item[compact] {
-          padding-top: 0rem;
+          padding-top: 0;
           padding-bottom: 0;
           border-bottom: 1px solid #333;
         }
@@ -191,10 +194,17 @@ export class Grouping extends LitElement {
         }
 
         .applying {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
           display: flex;
           justify-content: center;
-          padding: 0.5rem;
-          flex-shrink: 0;
+          align-items: center;
+          background: rgba(0, 0, 0, 0.3);
+          z-index: 10;
+          pointer-events: none;
         }
       `,
     ];
@@ -225,14 +235,15 @@ export class Grouping extends LitElement {
     const activePlayerId = this.activePlayer.id;
     const { unJoin, join, newMainPlayer } = getGroupingChanges(groupingItems, joinedPlayers, activePlayerId);
     const selectedPredefinedGroup = this.selectedPredefinedGroup;
+    const expectedGroupIds = groupingItems
+      .filter((item) => item.isSelected)
+      .map((item) => item.player.id)
+      .sort();
 
-    // Snapshot the intended end-state before clearing modifications
-    this.appliedGroupingItems = groupingItems.map((item) => {
-      const snapshot = new GroupingItem(item.player, this.activePlayer, false);
+    // Snapshot the intended end-state to freeze the UI during apply
+    this.frozenGroupingItems = groupingItems.map((item) => {
+      const snapshot = new GroupingItem(item.player, this.activePlayer, item.isModified);
       snapshot.isSelected = item.isSelected;
-      snapshot.isModified = false;
-      snapshot.isDisabled = item.isDisabled;
-      snapshot.icon = item.isSelected ? 'check-circle' : 'checkbox-blank-circle-outline';
       return snapshot;
     });
     this.applying = true;
@@ -256,10 +267,44 @@ export class Grouping extends LitElement {
       if (this.config.entityId && unJoin.includes(this.config.entityId) && this.groupingConfig.dontSwitchPlayer) {
         dispatchActivePlayerId(this.config.entityId, this.config, this);
       }
+
+      // Poll until HA state matches the expected group, or timeout
+      // Then wait for HA to fully reconcile all entity states
+      await this.waitForGroupSync(newMainPlayer, expectedGroupIds);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     } finally {
       this.applying = false;
-      this.appliedGroupingItems = undefined;
+      this.frozenGroupingItems = undefined;
     }
+  }
+
+  private waitForGroupSync(mainPlayerId: string, expectedGroupIds: string[]): Promise<void> {
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        clearInterval(poll);
+        resolve();
+      }, 30_000);
+
+      const poll = setInterval(() => {
+        if (this.isGroupingSynced(mainPlayerId, expectedGroupIds)) {
+          clearInterval(poll);
+          clearTimeout(timeout);
+          resolve();
+        }
+      }, 500);
+    });
+  }
+
+  private isGroupingSynced(mainPlayerId: string, expectedGroupIds: string[]): boolean {
+    const hass = this.store.hass;
+    const mainEntity = hass.states[mainPlayerId];
+    if (!mainEntity) {
+      return false;
+    }
+    const actualIds = getGroupPlayerIds(mainEntity).sort();
+    return (
+      actualIds.length === expectedGroupIds.length && actualIds.every((id, index) => id === expectedGroupIds[index])
+    );
   }
 
   private cancelGrouping() {

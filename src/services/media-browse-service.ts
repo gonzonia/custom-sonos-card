@@ -5,30 +5,65 @@ import { stringContainsAnyItemInArray } from '../utils/media-browse-utils';
 import { customEvent } from '../utils/utils';
 import { HASS_MORE_INFO } from '../constants';
 import { browseMediaPlayer } from '../upstream/data/media-player';
+import { MusicAssistantService } from './music-assistant-service';
 
 export default class MediaBrowseService {
   private hass: HomeAssistant;
   private config: CardConfig;
+  private musicAssistantService: MusicAssistantService;
+  private massConfigEntryId: string | null = null;
+  private massConfigDiscoveryDone = false;
 
   constructor(hass: HomeAssistant, config: CardConfig) {
     this.hass = hass;
     this.config = config;
+    this.musicAssistantService = new MusicAssistantService(hass);
+  }
+
+  private isMusicAssistant(player: MediaPlayer): boolean {
+    return player.attributes.platform === 'music_assistant';
+  }
+
+  private async getMassConfigEntryId(): Promise<string | null> {
+    if (!this.massConfigDiscoveryDone) {
+      this.massConfigEntryId = await this.musicAssistantService.discoverConfigEntryId();
+      this.massConfigDiscoveryDone = true;
+    }
+    return this.massConfigEntryId;
   }
 
   async getFavorites(player: MediaPlayer): Promise<MediaPlayerItem[]> {
     if (!player) {
       return [];
     }
-    let favorites = await this.getFavoritesForPlayer(player);
-    favorites = favorites.flatMap((f) => f);
-    favorites = this.removeDuplicates(favorites);
-    favorites = favorites.length ? favorites : this.getFavoritesFromStates(player);
+
+    let favorites: MediaPlayerItem[];
+
+    // For Music Assistant players, use the Music Assistant library
+    if (this.isMusicAssistant(player)) {
+      favorites = await this.getMusicAssistantFavorites();
+    } else {
+      favorites = await this.getFavoritesForPlayer(player);
+      favorites = favorites.flatMap((f) => f);
+      favorites = this.removeDuplicates(favorites);
+      favorites = favorites.length ? favorites : this.getFavoritesFromStates(player);
+    }
+
     const exclude = this.config.mediaBrowser?.favorites?.exclude ?? [];
     return favorites.filter((item) => {
       const titleNotIgnored = !stringContainsAnyItemInArray(exclude, item.title);
       const contentIdNotIgnored = !stringContainsAnyItemInArray(exclude, item.media_content_id ?? '');
       return titleNotIgnored && contentIdNotIgnored;
     });
+  }
+
+  private async getMusicAssistantFavorites(): Promise<MediaPlayerItem[]> {
+    const configEntryId = await this.getMassConfigEntryId();
+    if (!configEntryId) {
+      console.warn('Music Assistant config entry not found');
+      return [];
+    }
+    return this.musicAssistantService.getFavorites(configEntryId);
   }
 
   private removeDuplicates(items: MediaPlayerItem[]) {

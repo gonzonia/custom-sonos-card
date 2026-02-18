@@ -42,7 +42,9 @@ function loadToken(env: EnvConfig): string | null {
   return env.HA_TOKEN?.trim() || null;
 }
 
-async function updateHacstag(): Promise<void> {
+const CARD_NAMES = ['custom-sonos-card', 'maxi-media-player'];
+
+async function updateHacstags(): Promise<void> {
   const env = loadEnv();
   const token = loadToken(env);
 
@@ -64,6 +66,8 @@ async function updateHacstag(): Promise<void> {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(wsUrl);
     let msgId = 1;
+    let pendingUpdates: { resourceId: number; currentUrl: string; newUrl: string; cardName: string }[] = [];
+    let completedUpdates = 0;
 
     ws.on('message', (data: WebSocket.Data) => {
       const msg: HaMessage = JSON.parse(data.toString());
@@ -78,9 +82,40 @@ async function updateHacstag(): Promise<void> {
         ws.close();
         reject(new Error('Auth failed'));
       } else if (msg.type === 'result' && msg.id === 1) {
-        handleResourcesResult(msg, ws, msgId++, resolve, reject);
-      } else if (msg.type === 'result' && msg.id === 2) {
-        handleUpdateResult(msg, ws, resolve, reject);
+        pendingUpdates = buildUpdates(msg, reject);
+        if (pendingUpdates.length === 0) {
+          ws.close();
+          reject(new Error('No resources found to update'));
+          return;
+        }
+        for (const update of pendingUpdates) {
+          const id = msgId++;
+          console.log(`\n[${update.cardName}]`);
+          console.log(`  Resource ID: ${update.resourceId}`);
+          console.log(`  Current: ${update.currentUrl}`);
+          console.log(`  New: ${update.newUrl}`);
+          ws.send(
+            JSON.stringify({
+              id,
+              type: 'lovelace/resources/update',
+              resource_id: update.resourceId,
+              url: update.newUrl,
+            }),
+          );
+        }
+      } else if (msg.type === 'result' && msg.id && msg.id >= 2) {
+        if (msg.success) {
+          completedUpdates++;
+          if (completedUpdates === pendingUpdates.length) {
+            console.log(`\n✅ All ${completedUpdates} hacstags updated successfully!`);
+            ws.close();
+            resolve();
+          }
+        } else {
+          console.error('Failed to update:', msg.error);
+          ws.close();
+          reject(new Error('Update failed'));
+        }
       }
     });
 
@@ -91,65 +126,40 @@ async function updateHacstag(): Promise<void> {
   });
 }
 
-function handleResourcesResult(
+function buildUpdates(
   msg: HaMessage,
-  ws: WebSocket,
-  msgId: number,
-  _resolve: () => void,
   reject: (err: Error) => void,
-): void {
+): { resourceId: number; currentUrl: string; newUrl: string; cardName: string }[] {
   const resources = msg.result ?? [];
-  const sonosResource = resources.find((r) => r.url?.includes('custom-sonos-card'));
+  const updates: { resourceId: number; currentUrl: string; newUrl: string; cardName: string }[] = [];
 
-  if (!sonosResource) {
-    console.error('Could not find custom-sonos-card resource!');
-    ws.close();
-    reject(new Error('Resource not found'));
-    return;
+  for (const cardName of CARD_NAMES) {
+    const resource = resources.find((r) => r.url?.includes(cardName));
+
+    if (!resource) {
+      console.error(`Could not find ${cardName} resource!`);
+      reject(new Error(`Resource not found: ${cardName}`));
+      return [];
+    }
+
+    const match = resource.url.match(/hacstag=(\d+)/);
+    if (!match) {
+      console.error(`No hacstag found in URL: ${resource.url}`);
+      reject(new Error(`No hacstag for ${cardName}`));
+      return [];
+    }
+
+    const currentTag = parseInt(match[1], 10);
+    const newTag = currentTag + 1;
+    const newUrl = resource.url.replace(`hacstag=${currentTag}`, `hacstag=${newTag}`);
+
+    updates.push({ resourceId: resource.id, currentUrl: resource.url, newUrl, cardName });
   }
 
-  const currentUrl = sonosResource.url;
-  const resourceId = sonosResource.id;
-
-  const match = currentUrl.match(/hacstag=(\d+)/);
-  if (!match) {
-    console.error(`No hacstag found in URL: ${currentUrl}`);
-    ws.close();
-    reject(new Error('No hacstag'));
-    return;
-  }
-
-  const currentTag = parseInt(match[1], 10);
-  const newTag = currentTag + 1;
-  const newUrl = currentUrl.replace(`hacstag=${currentTag}`, `hacstag=${newTag}`);
-
-  console.log(`Resource ID: ${resourceId}`);
-  console.log(`Current: ${currentUrl}`);
-  console.log(`New: ${newUrl}`);
-
-  ws.send(
-    JSON.stringify({
-      id: msgId,
-      type: 'lovelace/resources/update',
-      resource_id: resourceId,
-      url: newUrl,
-    }),
-  );
+  return updates;
 }
 
-function handleUpdateResult(msg: HaMessage, ws: WebSocket, resolve: () => void, reject: (err: Error) => void): void {
-  if (msg.success) {
-    console.log('\n✅ Hacstag updated successfully!');
-    ws.close();
-    resolve();
-  } else {
-    console.error('Failed to update:', msg.error);
-    ws.close();
-    reject(new Error('Update failed'));
-  }
-}
-
-updateHacstag().catch((err: Error) => {
+updateHacstags().catch((err: Error) => {
   console.error(err.message);
   process.exit(1);
 });

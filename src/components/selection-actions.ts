@@ -1,7 +1,9 @@
 import { css, html, LitElement, nothing } from 'lit';
 import { property } from 'lit/decorators.js';
-import { mdiAnimationPlay, mdiPlaylistPlus, mdiSelectInverse, mdiSkipNext } from '@mdi/js';
+import { mdiSelectInverse } from '@mdi/js';
 import { customEvent } from '../utils/utils';
+import './play-menu';
+import type { PlayMenuAction } from './play-menu';
 
 export class SelectionActions extends LitElement {
   @property({ type: Boolean }) hasSelection = false;
@@ -17,28 +19,11 @@ export class SelectionActions extends LitElement {
             title="Invert selection"
           ></ha-icon-button>`
         : nothing}
-      ${this.hasSelection
-        ? html`
-            <ha-icon-button
-              .path=${mdiAnimationPlay}
-              @click=${this.playSelected}
-              title="Play selected"
-              ?disabled=${this.disabled}
-            ></ha-icon-button>
-            <ha-icon-button
-              .path=${mdiSkipNext}
-              @click=${this.queueSelected}
-              title="Queue selected after current"
-              ?disabled=${this.disabled}
-            ></ha-icon-button>
-            <ha-icon-button
-              .path=${mdiPlaylistPlus}
-              @click=${this.queueSelectedAtEnd}
-              title="Add selected to end of queue"
-              ?disabled=${this.disabled}
-            ></ha-icon-button>
-          `
-        : nothing}
+      <sonos-play-menu
+        .hasSelection=${this.hasSelection}
+        .disabled=${this.disabled}
+        @play-menu-action=${this.onPlayMenuAction}
+      ></sonos-play-menu>
     `;
   }
 
@@ -46,16 +31,29 @@ export class SelectionActions extends LitElement {
     this.dispatchEvent(customEvent('invert-selection'));
   }
 
-  private playSelected() {
-    this.dispatchEvent(customEvent('play-selected'));
-  }
-
-  private queueSelected() {
-    this.dispatchEvent(customEvent('queue-selected'));
-  }
-
-  private queueSelectedAtEnd() {
-    this.dispatchEvent(customEvent('queue-selected-at-end'));
+  private onPlayMenuAction(e: CustomEvent<PlayMenuAction>) {
+    const action = e.detail;
+    switch (action.enqueue) {
+      case 'replace':
+        this.dispatchEvent(customEvent('play-selected', { enqueue: 'replace' }));
+        break;
+      case 'play':
+        if (action.radioMode) {
+          this.dispatchEvent(customEvent('play-selected', { enqueue: 'play', radioMode: true }));
+        } else {
+          this.dispatchEvent(customEvent('play-selected', { enqueue: 'play' }));
+        }
+        break;
+      case 'next':
+        this.dispatchEvent(customEvent('queue-selected', { enqueue: 'next' }));
+        break;
+      case 'add':
+        this.dispatchEvent(customEvent('queue-selected-at-end', { enqueue: 'add' }));
+        break;
+      case 'replace_next':
+        this.dispatchEvent(customEvent('queue-selected', { enqueue: 'replace_next' }));
+        break;
+    }
   }
 
   static styles = css`

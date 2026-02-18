@@ -8,7 +8,7 @@ import { GROUPING_SCHEMA } from './schema/grouping-schema';
 import { VOLUMES_SCHEMA } from './schema/volumes-schema';
 import { QUEUE_SCHEMA } from './schema/queue-schema';
 import { SEARCH_SCHEMA } from './schema/search-schema';
-import { isSonosCard } from '../utils/utils';
+import { isQueueSupported } from '../utils/utils';
 import './tabs/common-tab';
 import './tabs/player-tab';
 import './tabs/media-browser-tab';
@@ -30,7 +30,7 @@ class CardEditor extends BaseEditor {
   @state() private activeTab = Tab.COMMON;
 
   private get tabs() {
-    return Object.values(Tab).filter((tab) => tab !== Tab.QUEUE || isSonosCard(this.config));
+    return Object.values(Tab).filter((tab) => tab !== Tab.QUEUE || isQueueSupported(this.config));
   }
 
   private get activeTabIndex() {

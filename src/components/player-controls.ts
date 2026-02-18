@@ -1,10 +1,12 @@
-import { css, html, LitElement, nothing } from 'lit';
-import { property } from 'lit/decorators.js';
+import { css, html, LitElement, nothing, PropertyValues } from 'lit';
+import { property, state } from 'lit/decorators.js';
 import MediaControlService from '../services/media-control-service';
 import Store from '../model/store';
 import { CardConfig, PlayerConfig } from '../types';
 import {
   mdiFastForward,
+  mdiHeart,
+  mdiHeartOutline,
   mdiPauseCircle,
   mdiPlayBoxMultiple,
   mdiPlayCircle,
@@ -21,6 +23,8 @@ import MediaBrowseService from '../services/media-browse-service';
 
 class PlayerControls extends LitElement {
   @property({ attribute: false }) store!: Store;
+  @state() private isFavorite: boolean | null = null;
+  @state() private favoriteLoading = false;
   private config!: CardConfig;
   private playerConfig!: PlayerConfig;
   private activePlayer!: MediaPlayer;
@@ -28,13 +32,28 @@ class PlayerControls extends LitElement {
   private mediaBrowseService!: MediaBrowseService;
   private volumePlayer!: MediaPlayer;
   private updateMemberVolumes!: boolean;
+  private lastMediaContentId: string | undefined;
+
+  protected willUpdate(changedProperties: PropertyValues): void {
+    if (changedProperties.has('store')) {
+      this.config = this.store.config;
+      this.playerConfig = this.config.player ?? {};
+      this.activePlayer = this.store.activePlayer;
+      this.mediaControlService = this.store.mediaControlService;
+      this.mediaBrowseService = this.store.mediaBrowseService;
+
+      const isMusicAssistant = this.store.hassService.musicAssistantService.isMusicAssistantPlayer(this.activePlayer);
+      const currentMediaContentId = this.activePlayer.attributes.media_content_id;
+      if (isMusicAssistant && currentMediaContentId !== this.lastMediaContentId) {
+        this.lastMediaContentId = currentMediaContentId;
+        this.isFavorite = null;
+        this.favoriteLoading = false;
+        this.refreshFavoriteStatus();
+      }
+    }
+  }
 
   render() {
-    this.config = this.store.config;
-    this.playerConfig = this.config.player ?? {};
-    this.activePlayer = this.store.activePlayer;
-    this.mediaControlService = this.store.mediaControlService;
-    this.mediaBrowseService = this.store.mediaBrowseService;
     const noUpDown = !!this.playerConfig.showVolumeUpAndDownButtons && nothing;
     const noFastForwardAndRewind = !!this.playerConfig.showFastForwardAndRewindButtons && nothing;
     const noShuffle = !this.playerConfig.hideControlShuffleButton && nothing;
@@ -42,6 +61,7 @@ class PlayerControls extends LitElement {
     const noNext = !this.playerConfig.hideControlNextTrackButton && nothing;
     const noRepeat = !this.playerConfig.hideControlRepeatButton && nothing;
     const noBrowse = !!this.playerConfig.showBrowseMediaButton && nothing;
+    const isMusicAssistant = this.store.hassService.musicAssistantService.isMusicAssistantPlayer(this.activePlayer);
 
     this.volumePlayer = this.getVolumePlayer();
     this.updateMemberVolumes = !this.playerConfig.volumeEntityId;
@@ -55,7 +75,21 @@ class PlayerControls extends LitElement {
       </style>
       <div class="main" id="mediaControls">
         <div class="icons ${this.playerConfig.controlsLargeIcons ? 'large-icons' : ''}">
-          <div class="flex-1"></div>
+          <div class="flex-1">
+            ${
+              isMusicAssistant
+                ? html`<ha-icon-button
+                    class="favorite-button ${this.isFavorite ? 'is-favorite' : ''} ${this.favoriteLoading
+                      ? 'loading'
+                      : ''}"
+                    @click=${this.toggleFavorite}
+                    .path=${this.isFavorite ? mdiHeart : mdiHeartOutline}
+                    title=${this.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                    ?disabled=${this.favoriteLoading}
+                  ></ha-icon-button>`
+                : nothing
+            }
+          </div>
           <ha-icon-button hide=${noUpDown} @click=${this.volDown} .path=${mdiVolumeMinus}></ha-icon-button>
           <sonos-shuffle hide=${noShuffle} .store=${this.store}></sonos-shuffle>
           <ha-icon-button hide=${noPrev} @click=${this.prev} .path=${mdiSkipPrevious}></ha-icon-button>
@@ -119,6 +153,40 @@ class PlayerControls extends LitElement {
       this.activePlayer.attributes.media_position + (this.playerConfig.fastForwardAndRewindStepSizeSeconds || 15),
     );
 
+  private async refreshFavoriteStatus() {
+    const songIdAtStart = this.activePlayer.attributes.media_content_id;
+    const favorite = await this.store.hassService.musicAssistantService.getCurrentSongFavorite(this.activePlayer);
+    // Only update if song hasn't changed during the async call
+    if (this.activePlayer.attributes.media_content_id === songIdAtStart) {
+      this.isFavorite = favorite;
+    }
+  }
+
+  private toggleFavorite = async () => {
+    if (this.favoriteLoading) {
+      return;
+    }
+    const songIdAtStart = this.activePlayer.attributes.media_content_id;
+    this.favoriteLoading = true;
+    try {
+      if (this.isFavorite) {
+        const success = await this.store.hassService.musicAssistantService.unfavoriteCurrentSong(this.activePlayer);
+        // Only update UI if song hasn't changed
+        if (success && this.activePlayer.attributes.media_content_id === songIdAtStart) {
+          this.isFavorite = false;
+        }
+      } else {
+        const success = await this.store.hassService.musicAssistantService.favoriteCurrentSong(this.activePlayer);
+        // Only update UI if song hasn't changed
+        if (success && this.activePlayer.attributes.media_content_id === songIdAtStart) {
+          this.isFavorite = true;
+        }
+      }
+    } finally {
+      this.favoriteLoading = false;
+    }
+  };
+
   static get styles() {
     return css`
       .main {
@@ -151,6 +219,12 @@ class PlayerControls extends LitElement {
       }
       .browse-button {
         float: right;
+      }
+      .favorite-button.is-favorite {
+        color: var(--accent-color);
+      }
+      .favorite-button.loading {
+        opacity: 0.5;
       }
 
       .large-icons {

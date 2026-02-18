@@ -11,6 +11,10 @@ export default class MediaControlService {
     this.config = config;
   }
 
+  private isMusicAssistant(mediaPlayer: MediaPlayer): boolean {
+    return mediaPlayer.attributes.platform === 'music_assistant';
+  }
+
   async join(main: string, memberIds: string[]) {
     await this.hassService.callMediaService('join', {
       entity_id: main,
@@ -204,12 +208,34 @@ export default class MediaControlService {
     const mediaContentId = enqueue
       ? this.transformMediaContentId(item.media_content_id ?? '')
       : (item.media_content_id ?? '');
-    await this.hassService.callMediaService('play_media', {
-      entity_id: mediaPlayer.id,
-      media_content_id: mediaContentId,
-      media_content_type: item.media_content_type ?? 'music',
-      ...(enqueue && { enqueue }),
-    });
+
+    if (this.config.entityPlatform === 'music_assistant') {
+      await this.hassService.callWithLoader(() =>
+        this.hassService.musicAssistantService.playMedia(mediaPlayer, mediaContentId, enqueue),
+      );
+    } else {
+      await this.hassService.callMediaService('play_media', {
+        entity_id: mediaPlayer.id,
+        media_content_id: mediaContentId,
+        media_content_type: item.media_content_type ?? 'music',
+        ...(enqueue && { enqueue }),
+      });
+    }
+  }
+
+  async playQueue(mediaPlayer: MediaPlayer, queuePosition: number, queueItemId?: string) {
+    if (this.isMusicAssistant(mediaPlayer) && queueItemId) {
+      await this.hassService.callWithLoader(() =>
+        this.hassService.musicAssistantService.playQueueItem(mediaPlayer, queueItemId),
+      );
+    } else {
+      await this.hassService.callWithLoader(() =>
+        this.hassService.callService('sonos', 'play_queue', {
+          entity_id: mediaPlayer.id,
+          queue_position: queuePosition,
+        }),
+      );
+    }
   }
 
   async moveQueueItemAfterCurrent(
@@ -218,9 +244,19 @@ export default class MediaControlService {
     index: number,
     currentIndex: number,
   ) {
-    await this.playMedia(mediaPlayer, item, 'next');
-    const removeIndex = index > currentIndex ? index + 1 : index;
-    await this.hassService.removeFromQueue(mediaPlayer, removeIndex);
+    // For Music Assistant, can't move the currently playing item or the next buffered item
+    if (this.isMusicAssistant(mediaPlayer)) {
+      if (index === currentIndex || index === currentIndex + 1) {
+        return;
+      }
+      if (item.queueItemId) {
+        await this.hassService.musicAssistantService.moveQueueItemNext(mediaPlayer, item.queueItemId);
+      }
+    } else {
+      await this.playMedia(mediaPlayer, item, 'next');
+      const removeIndex = index > currentIndex ? index + 1 : index;
+      await this.hassService.removeFromQueue(mediaPlayer, removeIndex, item.queueItemId);
+    }
   }
 
   async moveQueueItemsAfterCurrent(
@@ -231,6 +267,27 @@ export default class MediaControlService {
     onProgress?: (completed: number) => void,
     shouldCancel?: () => boolean,
   ) {
+    // For Music Assistant, use mass_queue.move_queue_item_next for each item
+    if (this.isMusicAssistant(mediaPlayer)) {
+      // Filter out the currently playing item and buffered next item - can't move them
+      const filteredIndices = indices.filter((i) => i !== currentIndex && i !== currentIndex + 1);
+      const reversedForInsert = [...filteredIndices].reverse();
+      let completed = 0;
+      for (const index of reversedForInsert) {
+        if (shouldCancel?.()) {
+          return;
+        }
+        const item = items[index];
+        if (item?.queueItemId) {
+          await this.hassService.musicAssistantService.moveQueueItemNext(mediaPlayer, item.queueItemId);
+        }
+        completed++;
+        onProgress?.(completed);
+      }
+      return;
+    }
+
+    // For Sonos, use the old approach
     const reversedForInsert = [...indices].reverse();
     let completed = 0;
 
@@ -252,8 +309,9 @@ export default class MediaControlService {
       if (shouldCancel?.()) {
         return;
       }
+      const item = items[originalIndex];
       const removeIndex = originalIndex > currentIndex ? originalIndex + numInserted : originalIndex;
-      await this.hassService.removeFromQueue(mediaPlayer, removeIndex);
+      await this.hassService.removeFromQueue(mediaPlayer, removeIndex, item?.queueItemId);
     }
   }
 
@@ -284,7 +342,8 @@ export default class MediaControlService {
       if (shouldCancel?.()) {
         return;
       }
-      await this.hassService.removeFromQueue(mediaPlayer, originalIndex);
+      const item = items[originalIndex];
+      await this.hassService.removeFromQueue(mediaPlayer, originalIndex, item?.queueItemId);
     }
   }
 
