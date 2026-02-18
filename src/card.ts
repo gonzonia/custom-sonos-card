@@ -12,7 +12,7 @@ import './components/source';
 import { ACTIVE_PLAYER_EVENT, CALL_MEDIA_DONE, CALL_MEDIA_STARTED } from './constants';
 import { when } from 'lit/directives/when.js';
 import { styleMap } from 'lit-html/directives/style-map.js';
-import { cardDoesNotContainAllSections, getHeight, getWidth, isSonosCard } from './utils/utils';
+import { cardDoesNotContainAllSections, getHeight, getWidth, isQueueSupported, isSonosCard } from './utils/utils';
 
 const { GROUPING, GROUPS, MEDIA_BROWSER, PLAYER, VOLUMES, QUEUE, SEARCH } = Section;
 const TITLE_HEIGHT = 2;
@@ -27,6 +27,7 @@ export class Card extends LitElement {
   @state() loaderTimestamp!: number;
   @state() cancelLoader!: boolean;
   @state() activePlayerId?: string;
+  @state() configError: string | null = null;
 
   render() {
     this.createStore();
@@ -47,6 +48,7 @@ export class Card extends LitElement {
         >
         </div>
         ${title ? html`<div class="title">${title}</div>` : html``}
+        ${this.configError ? html`<div class="no-players">${this.configError}</div>` : html``}
         <div class="content" style=${this.contentStyle(contentHeight)}>
           ${
             this.activePlayerId
@@ -251,8 +253,8 @@ export class Card extends LitElement {
         delete newConfig[key];
       }
     }
-    const sections =
-      newConfig.sections || Object.values(Section).filter((section) => isSonosCard(newConfig) || section !== QUEUE);
+    const showQueue = isQueueSupported(newConfig);
+    const sections = newConfig.sections || Object.values(Section).filter((section) => showQueue || section !== QUEUE);
     if (newConfig.startSection && sections.includes(newConfig.startSection)) {
       this.section = newConfig.startSection;
     } else if (sections) {
@@ -266,7 +268,7 @@ export class Card extends LitElement {
               ? GROUPING
               : sections.includes(SEARCH)
                 ? SEARCH
-                : sections.includes(QUEUE) && isSonosCard(newConfig)
+                : sections.includes(QUEUE) && showQueue
                   ? QUEUE
                   : VOLUMES;
     } else {
@@ -286,7 +288,20 @@ export class Card extends LitElement {
         newConfig.entityPlatform = undefined;
       }
     }
+    this.configError = this.getConfigError(newConfig);
     this.config = newConfig;
+  }
+
+  private getConfigError(config: CardConfig): string | null {
+    const isMusicAssistant = config.entityPlatform === 'music_assistant';
+    const hasShowNonSonos = !!config.showNonSonosPlayers;
+    const hasOtherPlatform =
+      !!config.entityPlatform && config.entityPlatform !== 'music_assistant' && config.entityPlatform !== 'sonos';
+    const activeCount = [isMusicAssistant, hasShowNonSonos, hasOtherPlatform].filter(Boolean).length;
+    if (activeCount > 1) {
+      return 'Conflicting configuration: only one of useMusicAssistant, showNonSonosPlayers, or entityPlatform can be set at a time. Please fix your configuration.';
+    }
+    return null;
   }
 
   static get styles() {

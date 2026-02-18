@@ -134,6 +134,11 @@ export function isSonosCard(config: CardConfig) {
   return config.type.indexOf('sonos') > -1;
 }
 
+export function isQueueSupported(config: CardConfig) {
+  const effectivePlatform = config.entityPlatform ?? (isSonosCard(config) ? 'sonos' : undefined);
+  return effectivePlatform === 'sonos' || effectivePlatform === 'music_assistant';
+}
+
 export function sortEntities(config: CardConfig, filtered: HassEntity[]) {
   if (config.entities) {
     return filtered.sort((a, b) => {
@@ -148,4 +153,8 @@ export function sortEntities(config: CardConfig, filtered: HassEntity[]) {
 
 export function findPlayer(mediaPlayers: MediaPlayer[], playerId: string | undefined) {
   return mediaPlayers.find((member) => member.id === playerId);
+}
+
+export function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

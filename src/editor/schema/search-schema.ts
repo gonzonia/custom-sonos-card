@@ -4,6 +4,7 @@ const mediaTypeOptions = {
   artist: 'Artist',
   album: 'Album',
   playlist: 'Playlist',
+  radio: 'Radio',
 };
 
 export const SEARCH_SCHEMA = [
@@ -30,7 +31,7 @@ export const SEARCH_SCHEMA = [
   {
     name: 'autoSearchMinChars',
     type: 'integer',
-    help: 'Min characters to trigger auto-search (default: 3)',
+    help: 'Min characters to trigger auto-search (default: 2)',
   },
   {
     name: 'autoSearchDebounceMs',

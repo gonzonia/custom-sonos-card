@@ -146,6 +146,10 @@ export const ENTITIES_SCHEMA = [
     selector: { entity: { multiple: true, filter: { domain: 'media_player' } } },
   },
   {
+    name: 'useMusicAssistant',
+    selector: { boolean: {} },
+  },
+  {
     name: 'showNonSonosPlayers',
     help: 'Show all media players, including those that are not on the Sonos platform',
     cardType: 'sonos',
@@ -154,7 +158,7 @@ export const ENTITIES_SCHEMA = [
   {
     name: 'entityPlatform',
     help: 'Show all media players for the selected platform',
-    type: 'string',
+    selector: { text: {} },
   },
   {
     name: 'entityNameRegexToReplace',

@@ -31,5 +31,19 @@ export const queueStyles = [
       -webkit-text-stroke: 0.5px black;
       text-shadow: 0 0 2px black;
     }
+    .error-message {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      padding: 1rem;
+      text-align: center;
+      color: var(--secondary-text-color);
+    }
+    .error-message p {
+      margin: 0;
+      line-height: 1.5;
+    }
   `,
 ];

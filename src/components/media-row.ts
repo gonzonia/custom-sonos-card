@@ -1,7 +1,7 @@
 import { css, html, LitElement, nothing, PropertyValues } from 'lit';
 import { property } from 'lit/decorators.js';
 import { classMap } from 'lit/directives/class-map.js';
-import { mdiSkipNext } from '@mdi/js';
+import { mdiBookshelf, mdiHeart, mdiHeartOutline, mdiSkipNext } from '@mdi/js';
 import Store from '../model/store';
 import { MediaPlayerItem } from '../types';
 import { mediaItemTitleStyle } from '../constants';
@@ -19,6 +19,12 @@ class MediaRow extends LitElement {
   @property({ type: Boolean }) checked = false;
   @property({ type: Boolean }) showQueueButton = false;
   @property({ type: Boolean }) queueButtonDisabled = false;
+  @property({ type: Boolean }) showFavoriteBadge = false;
+  @property({ type: Boolean }) showLibraryBadge = false;
+  @property({ type: Boolean }) isFavorite: boolean | null = null;
+  @property({ type: Boolean }) favoriteLoading = false;
+  @property({ type: Boolean }) isInLibrary: boolean | null = null;
+  @property({ type: Boolean }) libraryLoading = false;
 
   render() {
     const { itemBackgroundColor, itemTextColor, selectedItemBackgroundColor, selectedItemTextColor } =
@@ -28,35 +34,75 @@ class MediaRow extends LitElement {
     const cssVars =
       (bgColor ? `--secondary-background-color: ${bgColor};` : '') +
       (textColor ? `--secondary-text-color: ${textColor};` : '');
+    const hasBadges =
+      this.showFavoriteBadge || this.showLibraryBadge || this.isFavorite !== null || this.isInLibrary !== null;
+    const showClickableHeart = this.isFavorite !== null;
+    const showClickableLibrary = this.isInLibrary !== null;
     return html`
       <mwc-list-item
-        ?hasMeta=${this.playing}
+        ?hasMeta=${this.playing || hasBadges}
         ?selected=${this.selected}
         ?activated=${this.selected}
         class="button ${this.searchHighlight ? 'search-highlight' : ''}"
         style="${cssVars}"
       >
         <div class="row">
-          <div class="icon-slot">
-            ${this.showCheckbox
-              ? html`<ha-checkbox
+          ${this.showCheckbox
+            ? html`<div class="icon-slot">
+                <ha-checkbox
                   .checked=${this.checked}
                   @change=${this.onCheckboxChange}
                   @click=${(e: Event) => e.stopPropagation()}
-                ></ha-checkbox>`
-              : this.showQueueButton
-                ? html`<ha-icon-button
+                ></ha-checkbox>
+              </div>`
+            : this.showQueueButton
+              ? html`<div class="icon-slot">
+                  <ha-icon-button
                     class=${classMap({ 'queue-btn': true, disabled: this.queueButtonDisabled })}
                     .path=${mdiSkipNext}
                     ?disabled=${this.queueButtonDisabled}
                     @click=${this.onQueueClick}
-                  ></ha-icon-button>`
-                : nothing}
-          </div>
+                  ></ha-icon-button>
+                </div>`
+              : nothing}
           ${renderFavoritesItem(this.item)}
         </div>
         <div class="meta-content" slot="meta">
           <sonos-playing-bars .show=${this.playing}></sonos-playing-bars>
+          ${hasBadges
+            ? html`<div class="badges">
+                ${showClickableHeart
+                  ? html`<div
+                      class="badge-toggle ${this.favoriteLoading ? 'loading' : ''}"
+                      @click=${this.onFavoriteClick}
+                    >
+                      ${this.favoriteLoading
+                        ? html`<ha-circular-progress indeterminate size="tiny"></ha-circular-progress>`
+                        : html`<ha-svg-icon
+                            class=${this.isFavorite ? 'accent' : ''}
+                            .path=${this.isFavorite ? mdiHeart : mdiHeartOutline}
+                          ></ha-svg-icon>`}
+                    </div>`
+                  : this.showFavoriteBadge
+                    ? html`<ha-svg-icon class="accent" .path=${mdiHeart}></ha-svg-icon>`
+                    : nothing}
+                ${showClickableLibrary
+                  ? html`<div
+                      class="badge-toggle ${this.libraryLoading ? 'loading' : ''}"
+                      @click=${this.onLibraryClick}
+                    >
+                      ${this.libraryLoading
+                        ? html`<ha-circular-progress indeterminate size="tiny"></ha-circular-progress>`
+                        : html`<ha-svg-icon
+                            class=${this.isInLibrary ? 'accent' : ''}
+                            .path=${mdiBookshelf}
+                          ></ha-svg-icon>`}
+                    </div>`
+                  : this.showLibraryBadge
+                    ? html`<ha-svg-icon class="accent" .path=${mdiBookshelf}></ha-svg-icon>`
+                    : nothing}
+              </div>`
+            : nothing}
           <slot></slot>
         </div>
       </mwc-list-item>
@@ -71,6 +117,20 @@ class MediaRow extends LitElement {
   private onQueueClick(e: Event) {
     e.stopPropagation();
     this.dispatchEvent(customEvent('queue-item'));
+  }
+
+  private onFavoriteClick(e: Event) {
+    e.stopPropagation();
+    if (!this.favoriteLoading) {
+      this.dispatchEvent(customEvent('favorite-toggle', { isFavorite: this.isFavorite }));
+    }
+  }
+
+  private onLibraryClick(e: Event) {
+    e.stopPropagation();
+    if (!this.libraryLoading) {
+      this.dispatchEvent(customEvent('library-toggle', { isInLibrary: this.isInLibrary }));
+    }
   }
 
   protected async firstUpdated(_changedProperties: PropertyValues) {
@@ -146,8 +206,8 @@ class MediaRow extends LitElement {
         }
 
         .thumbnail {
-          width: var(--icon-width);
-          height: var(--icon-width);
+          width: var(--icon-width, 20px);
+          height: var(--icon-width, 20px);
           background-size: contain;
           background-repeat: no-repeat;
           background-position: left;
@@ -162,8 +222,63 @@ class MediaRow extends LitElement {
         .meta-content {
           display: flex;
           align-items: center;
-          gap: 0.5rem;
-          margin-left: 0.5rem;
+          gap: 4px;
+          padding-inline: 4px;
+        }
+
+        .badges {
+          display: flex;
+          align-items: center;
+          gap: 2px;
+        }
+
+        .badges > *:not(.badge-toggle) {
+          --mdc-icon-size: 16px;
+          width: 16px;
+          height: 16px;
+          opacity: 0.7;
+        }
+
+        .badges ha-svg-icon.accent {
+          color: var(--accent-color, #03a9f4);
+          opacity: 1;
+        }
+
+        .badge-toggle {
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 20px;
+          height: 20px;
+        }
+
+        .badge-toggle ha-svg-icon {
+          --mdc-icon-size: 16px;
+          width: 16px;
+          height: 16px;
+          opacity: 0.7;
+        }
+
+        .badge-toggle:hover ha-svg-icon {
+          opacity: 1;
+        }
+
+        .badge-toggle.loading {
+          pointer-events: none;
+        }
+
+        .badge-toggle ha-circular-progress {
+          --md-circular-progress-size: 14px;
+        }
+
+        mwc-list-item {
+          --mdc-list-item-meta-size: auto;
+          overflow: visible;
+        }
+
+        .mdc-deprecated-list-item__meta {
+          margin-right: 4px;
         }
       `,
       mediaItemTitleStyle,

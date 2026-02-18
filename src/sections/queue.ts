@@ -3,15 +3,18 @@ import { property, state } from 'lit/decorators.js';
 import Store from '../model/store';
 import { MediaPlayer } from '../model/media-player';
 import { listStyle, MEDIA_ITEM_SELECTED } from '../constants';
-import { customEvent } from '../utils/utils';
+import { customEvent, delay } from '../utils/utils';
 import { clearSelection, invertSelection, updateSelection } from '../utils/selection-utils';
 import { getParallelBatch, recalculateIndicesAfterDeletion } from '../utils/batch-operation-utils';
-import { mdiCloseBoxMultipleOutline, mdiPlaylistEdit, mdiTrashCanOutline } from '@mdi/js';
+import { mdiCheckboxMultipleMarkedOutline, mdiCloseBoxMultipleOutline, mdiTrashCanOutline } from '@mdi/js';
 import '../components/media-row';
 import '../components/queue-search';
 import '../components/selection-actions';
 import '../components/operation-overlay';
-import { MediaPlayerItem, OperationProgress, QueueSearchMatch } from '../types';
+import '../components/play-menu';
+import { MASS_QUEUE_NOT_INSTALLED, MediaPlayerItem, OperationProgress, QueueSearchMatch } from '../types';
+import type { PlayMenuAction } from '../components/play-menu';
+import type { EnqueueMode } from '../services/music-assistant-service';
 import { queueStyles } from './queue.styles';
 
 export class Queue extends LitElement {
@@ -28,7 +31,12 @@ export class Queue extends LitElement {
   @state() private loading = true;
   @state() private operationProgress: OperationProgress | null = null;
   @state() private cancelOperation = false;
+  @state() private errorMessage: string | null = null;
+  @state() private currentQueueItemId: string | null = null;
+  @state() private playMenuItemIndex: number | null = null;
   private lastQueueHash = '';
+  private fetchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastActivePlayerId: string | null = null;
 
   private get queueTitle(): string {
     if (this.store.config.queue?.title) {
@@ -42,11 +50,10 @@ export class Queue extends LitElement {
     // Wait for LitElement to complete render, then scroll to the selected (currently playing) row
     await this.updateComplete;
     await new Promise((r) => requestAnimationFrame(r));
-    const queuePosition = this.activePlayer.attributes.queue_position;
-    if (!queuePosition) {
+    const currentIndex = this.getCurrentlyPlayingIndex();
+    if (currentIndex < 0) {
       return;
     }
-    const currentIndex = queuePosition - 1;
     const rows = this.shadowRoot?.querySelectorAll('sonos-media-row');
     const selectedRow = rows?.[currentIndex];
     selectedRow?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -54,21 +61,62 @@ export class Queue extends LitElement {
 
   protected willUpdate(changedProperties: PropertyValues): void {
     if (changedProperties.has('store')) {
-      this.fetchQueue();
+      // Debounce queue fetches to reduce flickering
+      const playerChanged = this.store.activePlayer.id !== this.lastActivePlayerId;
+      if (playerChanged) {
+        this.lastActivePlayerId = this.store.activePlayer.id;
+        this.lastQueueHash = '';
+        this.loading = true;
+        this.fetchQueue();
+      } else {
+        this.debouncedFetchQueue();
+      }
     }
   }
 
-  private async fetchQueue() {
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    if (this.fetchDebounceTimer) {
+      clearTimeout(this.fetchDebounceTimer);
+    }
+  }
+
+  private debouncedFetchQueue() {
+    if (this.fetchDebounceTimer) {
+      clearTimeout(this.fetchDebounceTimer);
+    }
+    this.fetchDebounceTimer = setTimeout(() => {
+      this.fetchQueue();
+    }, 500);
+  }
+
+  private async fetchQueue(forceRefresh = false) {
     try {
-      const queue = await this.store.hassService.getQueue(this.store.activePlayer);
+      const [queue, currentItemId] = await Promise.all([
+        this.store.hassService.getQueue(this.store.activePlayer),
+        this.store.hassService.musicAssistantService.getCurrentQueueItemId(this.store.activePlayer),
+      ]);
       const queueHash = queue.map((item) => item.title).join('|');
-      if (queueHash !== this.lastQueueHash) {
+      if (forceRefresh || queueHash !== this.lastQueueHash) {
         this.lastQueueHash = queueHash;
         this.queueItems = queue;
       }
+      if (currentItemId !== this.currentQueueItemId) {
+        this.currentQueueItemId = currentItemId;
+      }
+      if (this.errorMessage !== null) {
+        this.errorMessage = null;
+      }
     } catch (e) {
-      // Keep cached queue on error
-      console.warn('Error getting queue', e);
+      const error = e as Error;
+      if (error.message === MASS_QUEUE_NOT_INSTALLED) {
+        this.errorMessage =
+          'To show the queue for Music Assistant, install the mass_queue integration from HACS: github.com/droans/mass_queue';
+        this.queueItems = [];
+      } else {
+        // Keep cached queue on other errors
+        console.warn('Error getting queue', e);
+      }
     }
     if (this.loading) {
       this.loading = false;
@@ -77,8 +125,31 @@ export class Queue extends LitElement {
 
   render() {
     this.activePlayer = this.store.activePlayer;
-    const queuePosition = this.activePlayer.attributes.queue_position;
-    const selected = queuePosition ? queuePosition - 1 : -1;
+
+    if (this.shouldShowMusicAssistantConfigMessage()) {
+      return html`
+        <div class="queue-container">
+          <div class="error-message">
+            <p>
+              To see the Music Assistant queue, enable <code>useMusicAssistant</code> (or set
+              <code>entityPlatform: music_assistant</code>) in the card configuration.
+            </p>
+          </div>
+        </div>
+      `;
+    }
+
+    if (this.isQueueNotManagedByMusicAssistant()) {
+      return html`
+        <div class="queue-container">
+          <div class="error-message">
+            <p>The current queue is not managed by Music Assistant.</p>
+          </div>
+        </div>
+      `;
+    }
+
+    const selected = this.getCurrentlyPlayingIndex();
     return html`
       <div class="queue-container" @keydown=${this.onKeyDown} tabindex="-1">
         <sonos-operation-overlay
@@ -86,7 +157,42 @@ export class Queue extends LitElement {
           .hass=${this.store.hass}
           @cancel-operation=${this.cancelCurrentOperation}
         ></sonos-operation-overlay>
-        ${this.renderQueue(selected)}
+        ${this.errorMessage ? this.renderError() : this.renderQueue(selected)} ${this.renderPlayMenuOverlay()}
+      </div>
+    `;
+  }
+
+  private shouldShowMusicAssistantConfigMessage(): boolean {
+    return (
+      this.store.config.entityPlatform !== 'music_assistant' &&
+      this.activePlayer.attributes.media_playlist === 'Music Assistant'
+    );
+  }
+
+  private isQueueNotManagedByMusicAssistant(): boolean {
+    return this.store.config.entityPlatform === 'music_assistant' && this.activePlayer.attributes.active_queue == null;
+  }
+
+  private getCurrentlyPlayingIndex(): number {
+    const attrs = this.activePlayer.attributes;
+    // Sonos uses queue_position (1-based)
+    if (attrs.queue_position) {
+      return attrs.queue_position - 1;
+    }
+    // Music Assistant: match by queue_item_id from music_assistant.get_queue
+    if (this.currentQueueItemId) {
+      const index = this.queueItems.findIndex((item) => item.queueItemId === this.currentQueueItemId);
+      if (index !== -1) {
+        return index;
+      }
+    }
+    return -1;
+  }
+
+  private renderError() {
+    return html`
+      <div class="error-message">
+        <p>${this.errorMessage}</p>
       </div>
     `;
   }
@@ -139,7 +245,7 @@ export class Queue extends LitElement {
                 <sonos-repeat .store=${this.store}></sonos-repeat>
               `}
           <ha-icon-button
-            .path=${mdiPlaylistEdit}
+            .path=${mdiCheckboxMultipleMarkedOutline}
             @click=${this.toggleSelectMode}
             ?selected=${this.selectMode}
             title="Select mode"
@@ -158,7 +264,6 @@ export class Queue extends LitElement {
                 const isPlaying = isSelected && this.activePlayer.isPlaying();
                 const isSearchHighlight = this.searchHighlightIndex === realIndex;
                 const isChecked = this.selectedIndices.has(realIndex);
-                const isNextUp = selected >= 0 && realIndex === selected + 1;
                 return html`
                   <sonos-media-row
                     @click=${() => this.onMediaItemClick(index)}
@@ -167,11 +272,8 @@ export class Queue extends LitElement {
                     .playing=${isPlaying}
                     .searchHighlight=${isSearchHighlight}
                     .showCheckbox=${this.selectMode}
-                    .showQueueButton=${!this.selectMode}
-                    .queueButtonDisabled=${isSelected || isNextUp}
                     .checked=${isChecked}
                     @checkbox-change=${(e: CustomEvent) => this.onCheckboxChange(realIndex, e.detail.checked)}
-                    @queue-item=${() => this.queueAfterCurrent(realIndex)}
                     .store=${this.store}
                   ></sonos-media-row>
                 `;
@@ -181,29 +283,21 @@ export class Queue extends LitElement {
     `;
   }
 
-  private async queueAfterCurrent(index: number) {
-    const item = this.queueItems[index];
-    if (!item?.media_content_id) {
-      return;
+  private renderPlayMenuOverlay() {
+    if (this.playMenuItemIndex === null) {
+      return nothing;
     }
-
-    const queuePosition = this.activePlayer.attributes.queue_position;
-    const currentIndex = queuePosition ? queuePosition - 1 : -1;
-
-    this.operationProgress = { current: 0, total: 1, label: 'Moving' };
-    this.cancelOperation = false;
-
-    try {
-      await this.store.mediaControlService.moveQueueItemAfterCurrent(this.activePlayer, item, index, currentIndex);
-      if (this.cancelOperation) {
-        return;
-      }
-      await this.fetchQueue();
-      await this.scrollToCurrentlyPlaying();
-    } finally {
-      this.operationProgress = null;
-      this.cancelOperation = false;
-    }
+    const realIndex = this.playMenuItemIndex;
+    return html`
+      <div class="play-menu-overlay" @click=${() => (this.playMenuItemIndex = null)}>
+        <sonos-play-menu
+          .hasSelection=${true}
+          .inline=${true}
+          @play-menu-action=${(e: CustomEvent) => this.handleItemPlayAction(realIndex, e)}
+          @play-menu-close=${() => (this.playMenuItemIndex = null)}
+        ></sonos-play-menu>
+      </div>
+    `;
   }
 
   private async runBatchOperation(
@@ -222,7 +316,8 @@ export class Queue extends LitElement {
         return;
       }
       this.exitSelectMode();
-      await this.fetchQueue();
+      await delay(500);
+      await this.fetchQueue(true);
       if (options.scrollToPlaying) {
         await this.scrollToCurrentlyPlaying();
       }
@@ -233,8 +328,7 @@ export class Queue extends LitElement {
   }
 
   private getSelectedIndicesExcludingCurrent(): number[] {
-    const queuePosition = this.activePlayer.attributes.queue_position;
-    const currentIndex = queuePosition ? queuePosition - 1 : -1;
+    const currentIndex = this.getCurrentlyPlayingIndex();
     return Array.from(this.selectedIndices)
       .filter((i) => i !== currentIndex)
       .sort((a, b) => a - b);
@@ -247,7 +341,7 @@ export class Queue extends LitElement {
     }
 
     const total = selectedIndices.length;
-    const currentIndex = (this.activePlayer.attributes.queue_position ?? 1) - 1;
+    const currentIndex = this.getCurrentlyPlayingIndex();
     this.operationProgress = { current: 0, total, label: 'Moving' };
 
     await this.runBatchOperation(
@@ -332,19 +426,51 @@ export class Queue extends LitElement {
     if (this.showOnlyMatches && this.shownIndices.length > 0) {
       realIndex = this.shownIndices[index];
     }
-    if (!this.selectMode) {
-      await this.store.hassService.playQueue(this.activePlayer, realIndex);
-      this.dispatchEvent(customEvent(MEDIA_ITEM_SELECTED));
+    if (this.selectMode) {
+      // In select mode, toggle checkbox
+      const isChecked = this.selectedIndices.has(realIndex);
+      this.selectedIndices = updateSelection(this.selectedIndices, realIndex, !isChecked);
+      return;
     }
+    // Show/toggle inline play menu
+    this.playMenuItemIndex = this.playMenuItemIndex === realIndex ? null : realIndex;
   };
+
+  private async handleItemPlayAction(realIndex: number, e: CustomEvent<PlayMenuAction>) {
+    const item = this.queueItems[realIndex];
+    if (!item?.media_content_id) {
+      return;
+    }
+    this.playMenuItemIndex = null;
+    const action = e.detail;
+    const enqueue = action.enqueue;
+    // mediaControlService.playMedia only supports add/next/replace/play
+    // For replace_next or radioMode, use musicAssistantService directly
+    if (enqueue === 'replace_next' || action.radioMode) {
+      await this.store.hassService.musicAssistantService.playMedia(
+        this.store.activePlayer,
+        item.media_content_id,
+        enqueue as EnqueueMode,
+        action.radioMode,
+      );
+    } else {
+      const playMode = enqueue as 'add' | 'next' | 'replace' | 'play';
+      await this.store.mediaControlService.playMedia(this.store.activePlayer, item, playMode);
+    }
+    this.dispatchEvent(customEvent(MEDIA_ITEM_SELECTED));
+  }
 
   private onCheckboxChange(index: number, checked: boolean) {
     this.selectedIndices = updateSelection(this.selectedIndices, index, checked);
   }
 
   private onKeyDown(e: KeyboardEvent) {
-    if (e.key === 'Escape' && this.selectMode) {
-      this.exitSelectMode();
+    if (e.key === 'Escape') {
+      if (this.playMenuItemIndex !== null) {
+        this.playMenuItemIndex = null;
+      } else if (this.selectMode) {
+        this.exitSelectMode();
+      }
     }
   }
 
@@ -354,12 +480,14 @@ export class Queue extends LitElement {
     } else {
       this.selectMode = true;
       this.selectedIndices = clearSelection();
+      this.playMenuItemIndex = null;
     }
   }
 
   private exitSelectMode() {
     this.selectMode = false;
     this.selectedIndices = clearSelection();
+    this.playMenuItemIndex = null;
   }
 
   private cancelCurrentOperation() {
@@ -369,7 +497,8 @@ export class Queue extends LitElement {
   private async clearQueue() {
     await this.store.hassService.clearQueue(this.activePlayer);
     this.exitSelectMode();
-    await this.fetchQueue();
+    await delay(500);
+    await this.fetchQueue(true);
   }
 
   private async deleteSelected() {
@@ -394,7 +523,10 @@ export class Queue extends LitElement {
         const batch = getParallelBatch(remaining);
 
         const results = await Promise.allSettled(
-          batch.map((index) => this.store.hassService.removeFromQueue(this.activePlayer, index)),
+          batch.map((index) => {
+            const queueItemId = this.queueItems[index]?.queueItemId;
+            return this.store.hassService.removeFromQueue(this.activePlayer, index, queueItemId);
+          }),
         );
 
         // Track which specific indices succeeded
@@ -415,7 +547,9 @@ export class Queue extends LitElement {
       this.operationProgress = null;
       this.cancelOperation = false;
       this.exitSelectMode();
-      await this.fetchQueue();
+      // Wait for Music Assistant to process the deletion before refreshing
+      await delay(500);
+      await this.fetchQueue(true);
     }
   }
 

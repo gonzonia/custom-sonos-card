@@ -21,13 +21,45 @@ class CommonTab extends BaseEditor {
     }
     return html`
       <h3>Entities</h3>
-      ${this.renderForm(ENTITIES_SCHEMA)}
+      ${this.renderEntitiesForm()}
       <h3>Predefined Groups</h3>
       ${this.renderPredefinedGroupsList()}
       <h3>Other</h3>
       ${this.renderForm(COMMON_SCHEMA)}
     `;
   }
+
+  private renderEntitiesForm() {
+    const useMusicAssistant = this.config.entityPlatform === 'music_assistant';
+    const data = { ...this.config, useMusicAssistant };
+
+    return html`
+      <sonos-card-editor-form
+        .schema=${ENTITIES_SCHEMA}
+        .config=${this.config}
+        .hass=${this.hass}
+        .data=${data}
+        .changed=${this.entitiesChanged}
+      ></sonos-card-editor-form>
+    `;
+  }
+
+  private entitiesChanged = (ev: CustomEvent) => {
+    const { useMusicAssistant, ...formData } = ev.detail.value;
+    const prevUseMusicAssistant = this.config.entityPlatform === 'music_assistant';
+    const newUseMusicAssistant = !!useMusicAssistant;
+
+    if (newUseMusicAssistant !== prevUseMusicAssistant) {
+      if (newUseMusicAssistant) {
+        this.config = { ...this.config, entityPlatform: 'music_assistant' };
+      } else {
+        this.config = { ...this.config, entityPlatform: undefined };
+      }
+    } else {
+      this.config = { ...this.config, ...formData };
+    }
+    this.configChanged();
+  };
 
   private renderForm(schema: unknown[]) {
     return html`

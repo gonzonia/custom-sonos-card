@@ -4,25 +4,36 @@ import { ServiceCallRequest } from 'custom-card-helpers/dist/types';
 import { CALL_MEDIA_DONE, CALL_MEDIA_STARTED } from '../constants';
 import { MediaPlayer } from '../model/media-player';
 import { customEvent } from '../utils/utils';
+import { MusicAssistantService } from './music-assistant-service';
 
 export default class HassService {
   private readonly hass: HomeAssistant;
   private readonly currentSection: Section;
   private readonly card: Element;
+  public readonly musicAssistantService: MusicAssistantService;
 
   constructor(hass: HomeAssistant, section: Section, card: Element) {
     this.hass = hass;
     this.currentSection = section;
     this.card = card;
+    this.musicAssistantService = new MusicAssistantService(hass);
   }
 
-  async callMediaService(service: string, inOptions: ServiceCallRequest['serviceData']) {
+  async callWithLoader<T>(action: () => Promise<T>): Promise<T> {
     this.card.dispatchEvent(customEvent(CALL_MEDIA_STARTED, { section: this.currentSection }));
     try {
-      await this.hass.callService('media_player', service, inOptions);
+      return await action();
     } finally {
       this.card.dispatchEvent(customEvent(CALL_MEDIA_DONE));
     }
+  }
+
+  async callMediaService(service: string, inOptions: ServiceCallRequest['serviceData']) {
+    await this.callWithLoader(() => this.hass.callService('media_player', service, inOptions));
+  }
+
+  async callService(domain: string, service: string, serviceData?: Record<string, unknown>) {
+    await this.hass.callService(domain, service, serviceData);
   }
 
   async renderTemplate<T>(template: string, defaultValue: T): Promise<T> {
@@ -55,48 +66,46 @@ export default class HassService {
       .map((item) => this.hass.states[item]);
   }
 
-  async getQueue(mediaPlayer: MediaPlayer): Promise<MediaPlayerItem[]> {
-    try {
-      const ret = await this.hass.callWS<GetQueueResponse>({
-        type: 'call_service',
-        domain: 'sonos',
-        service: 'get_queue',
-        target: {
-          entity_id: mediaPlayer.id,
-        },
-        return_response: true,
-      });
-      const queueItems = ret.response[mediaPlayer.id];
-      return queueItems.map((item) => {
-        return {
-          title: `${item.media_artist} - ${item.media_title}`,
-          media_content_id: item.media_content_id,
-          media_content_type: item.media_content_type,
-        };
-      });
-    } catch (e) {
-      console.error('Error getting queue', e);
-      return [];
-    }
+  private isMusicAssistant(mediaPlayer: MediaPlayer): boolean {
+    return this.musicAssistantService.isMusicAssistantPlayer(mediaPlayer);
   }
 
-  async playQueue(mediaPlayer: MediaPlayer, queuePosition: number) {
-    this.card.dispatchEvent(customEvent(CALL_MEDIA_STARTED, { section: this.currentSection }));
-    try {
-      await this.hass.callService('sonos', 'play_queue', {
+  async getQueue(mediaPlayer: MediaPlayer): Promise<MediaPlayerItem[]> {
+    if (this.isMusicAssistant(mediaPlayer)) {
+      return await this.musicAssistantService.getQueue(mediaPlayer);
+    }
+    return await this.getSonosQueue(mediaPlayer);
+  }
+
+  private async getSonosQueue(mediaPlayer: MediaPlayer): Promise<MediaPlayerItem[]> {
+    const ret = await this.hass.callWS<GetQueueResponse>({
+      type: 'call_service',
+      domain: 'sonos',
+      service: 'get_queue',
+      target: {
+        entity_id: mediaPlayer.id,
+      },
+      return_response: true,
+    });
+    const queueItems = ret.response[mediaPlayer.id];
+    return queueItems.map((item) => {
+      return {
+        title: `${item.media_artist} - ${item.media_title}`,
+        media_content_id: item.media_content_id,
+        media_content_type: item.media_content_type,
+      };
+    });
+  }
+
+  async removeFromQueue(mediaPlayer: MediaPlayer, queuePosition: number, queueItemId?: string) {
+    if (this.isMusicAssistant(mediaPlayer) && queueItemId) {
+      await this.musicAssistantService.removeQueueItem(mediaPlayer, queueItemId);
+    } else {
+      await this.hass.callService('sonos', 'remove_from_queue', {
         entity_id: mediaPlayer.id,
         queue_position: queuePosition,
       });
-    } finally {
-      this.card.dispatchEvent(customEvent(CALL_MEDIA_DONE));
     }
-  }
-
-  async removeFromQueue(mediaPlayer: MediaPlayer, queuePosition: number) {
-    await this.hass.callService('sonos', 'remove_from_queue', {
-      entity_id: mediaPlayer.id,
-      queue_position: queuePosition,
-    });
   }
 
   async clearQueue(mediaPlayer: MediaPlayer) {

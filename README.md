@@ -25,8 +25,8 @@ This card, Maxi Media Player, is a generalisation of the [Sonos Card](https://gi
 - Configurable styling
 - Dynamic volume level slider
 - Track progress bar
-- Show, play and rearrange tracks in play queue <!-- //#ONLY_SONOS_CARD -->
-- Set and clear sleep timer <!-- //#ONLY_SONOS_CARD -->
+- Show, play and rearrange tracks in play queue (Sonos and Music Assistant)
+- Set and clear sleep timer (Sonos)
 - Search for music via Music Assistant
 
 and more!
@@ -96,6 +96,8 @@ sections: # Choose which sections to show in the card. Available sections are:
   - grouping
   - media browser
   - player
+  - queue # Sonos or Music Assistant
+  - search # Music Assistant
 ```
 --> <!-- //#ONLY_SONOS_CARD -->
 
@@ -115,6 +117,7 @@ entities: # Required unless you specify entityPlatform
   - media_player.livingroom_player
 excludeItemsInEntitiesList: true # Will invert the selection in the `entities` list, so that all players that are not in the list will be used.
 entityPlatform: sonos # will select all entities for this platform. Will override the `entities` list if set.
+# In the visual editor, the "Use Music Assistant" toggle sets entityPlatform: music_assistant
 ```
 --> <!-- //#ONLY_SONOS_CARD -->
 <!-- //#ONLY_SONOS_CARD_START -->
@@ -166,6 +169,7 @@ dynamicVolumeSliderMax: 40 # default is 30. Use this to change the max value for
 dynamicVolumeSliderThreshold: 30 # default is 20. Use this to change the threshold for the dynamic volume slider.
 entitiesToIgnoreVolumeLevelFor: # default is empty. Use this if you want to ignore volume level for certain players in the player section. Useful if you have a main device with fixed volume.
   - media_player.my_sonos_port_device
+entityPlatform: music_assistant # default is empty. 
 predefinedGroups: # defaults to empty. More advanced features in separate section further down.
   - name: Inside
     volume: 15 # If you want to set the volume of all speakers when grouping
@@ -383,8 +387,6 @@ inverseGroupMuteState: true # default is false, which means that only if all pla
 volumeStepSize: 1 # Use this to change the step size when using volume up/down. Default is to use the step size of Home Assistant's media player integration.
 ```
 
-<!-- //#ONLY_SONOS_CARD_START -->
-
 ### Queue Configuration
 
 ```yaml
@@ -395,8 +397,6 @@ queue:
   selectedItemBackgroundColor: '#00ff00' # Use this to set a custom background color for the currently playing queue item.
   selectedItemTextColor: '#000000' # Use this to set a custom text color for the currently playing queue item.
 ```
-
-<!-- //#ONLY_SONOS_CARD_END -->
 
 ### Search Configuration
 
@@ -409,8 +409,14 @@ search:
   defaultMediaType: track # default is none. Pre-select a media type (track, artist, album, playlist).
   searchLimit: 50 # default is 50. Maximum number of results to show per search.
   autoSearchMinChars: 3 # default is 3. Minimum characters before auto-search triggers.
-  autoSearchDebounceMs: 1000 # default is 1000. Delay in milliseconds before auto-search executes.
 ```
+
+Queue supports:
+- Sonos queue (native Sonos integration)
+- Music Assistant queue (requires `entityPlatform: music_assistant`)
+
+If you use Music Assistant queue, install [mass_queue](https://github.com/droans/mass_queue) from HACS.
+
 
 **Search Features:**
 - Search for tracks, artists, albums, or playlists

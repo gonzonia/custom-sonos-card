@@ -76,4 +76,16 @@ export const sectionCommonStyles = css`
     padding: 2rem;
     color: var(--error-color, #db4437);
   }
+  .play-menu-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.3);
+  }
 `;
