@@ -424,8 +424,6 @@ If you use Music Assistant queue, install [mass_queue](https://github.com/droans
 - Select multiple items and play or queue them
 - State persists when switching sections
 
-**Limitations:**
-- Does not support library items, only streaming content (e.g. Spotify)
 
 ## Using individual section cards
 
