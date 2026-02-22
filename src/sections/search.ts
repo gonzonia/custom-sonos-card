@@ -47,7 +47,7 @@ interface SearchState {
 
 export class Search extends LitElement {
   @property() store!: Store;
-  @state() private mediaTypes: Set<SearchMediaType> = new Set();
+  @state() private mediaTypes: Set<SearchMediaType> = new Set(['track']);
   @state() private searchText = '';
   @state() private libraryFilter: LibraryFilter = 'all';
   @state() private results: SearchResultItem[] = [];
@@ -141,7 +141,7 @@ export class Search extends LitElement {
       const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (saved) {
         const state: SearchState = JSON.parse(saved);
-        this.mediaTypes = state.mediaTypes ? new Set(state.mediaTypes) : new Set();
+        this.mediaTypes = state.mediaTypes?.length ? new Set(state.mediaTypes) : new Set(['track']);
         this.searchText = state.searchText ?? '';
         this.libraryFilter = state.libraryFilter ?? 'all';
       }
