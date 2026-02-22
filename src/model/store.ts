@@ -126,8 +126,14 @@ export default class Store {
 
   public getMediaPlayerHassEntities(hass: HomeAssistant) {
     const hassWithEntities = hass as HomeAssistantWithEntities;
+    //include playerVolumeEntityID check for backwards compatibility (may not be necessary?)
+    const volumeEntityId = this.config.player?.volumeEntityId ?? this.config.playerVolumeEntityId;
     const filtered = Object.values(hass.states).filter((hassEntity) => {
       if (hassEntity.entity_id.includes('media_player')) {
+        // Always include the volume entity if allowPlayerVolumeEntityOutsideOfGroup is set
+        if (this.config.allowPlayerVolumeEntityOutsideOfGroup && hassEntity.entity_id === volumeEntityId) {
+          return true;
+        }
         if (isSonosCard(this.config)) {
           return entityMatchSonos(this.config, hassEntity, hassWithEntities);
         } else {
