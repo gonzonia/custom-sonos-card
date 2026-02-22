@@ -11,6 +11,10 @@ export default class MediaControlService {
     this.config = config;
   }
 
+  private isMusicAssistant(mediaPlayer: MediaPlayer): boolean {
+    return mediaPlayer.attributes.platform === 'music_assistant';
+  }
+
   async join(main: string, memberIds: string[]) {
     await this.hassService.callMediaService('join', {
       entity_id: main,
@@ -200,12 +204,194 @@ export default class MediaControlService {
     await this.hassService.callMediaService('select_source', { source: source, entity_id: mediaPlayer.id });
   }
 
-  async playMedia(mediaPlayer: MediaPlayer, item: MediaPlayerItem) {
-    await this.hassService.callMediaService('play_media', {
-      entity_id: mediaPlayer.id,
-      media_content_id: item.media_content_id,
-      media_content_type: item.media_content_type,
-    });
+  async playMedia(mediaPlayer: MediaPlayer, item: MediaPlayerItem, enqueue?: 'add' | 'next' | 'replace' | 'play') {
+    const mediaContentId = enqueue
+      ? this.transformMediaContentId(item.media_content_id ?? '')
+      : (item.media_content_id ?? '');
+
+    if (this.config.entityPlatform === 'music_assistant') {
+      await this.hassService.callWithLoader(() =>
+        this.hassService.musicAssistantService.playMedia(mediaPlayer, mediaContentId, enqueue),
+      );
+    } else {
+      await this.hassService.callMediaService('play_media', {
+        entity_id: mediaPlayer.id,
+        media_content_id: mediaContentId,
+        media_content_type: item.media_content_type ?? 'music',
+        ...(enqueue && { enqueue }),
+      });
+    }
+  }
+
+  async playQueue(mediaPlayer: MediaPlayer, queuePosition: number, queueItemId?: string) {
+    if (this.isMusicAssistant(mediaPlayer) && queueItemId) {
+      await this.hassService.callWithLoader(() =>
+        this.hassService.musicAssistantService.playQueueItem(mediaPlayer, queueItemId),
+      );
+    } else {
+      await this.hassService.callWithLoader(() =>
+        this.hassService.callService('sonos', 'play_queue', {
+          entity_id: mediaPlayer.id,
+          queue_position: queuePosition,
+        }),
+      );
+    }
+  }
+
+  async moveQueueItemAfterCurrent(
+    mediaPlayer: MediaPlayer,
+    item: MediaPlayerItem,
+    index: number,
+    currentIndex: number,
+  ) {
+    // For Music Assistant, can't move the currently playing item or the next buffered item
+    if (this.isMusicAssistant(mediaPlayer)) {
+      if (index === currentIndex || index === currentIndex + 1) {
+        return;
+      }
+      if (item.queueItemId) {
+        await this.hassService.musicAssistantService.moveQueueItemNext(mediaPlayer, item.queueItemId);
+      }
+    } else {
+      await this.playMedia(mediaPlayer, item, 'next');
+      const removeIndex = index > currentIndex ? index + 1 : index;
+      await this.hassService.removeFromQueue(mediaPlayer, removeIndex, item.queueItemId);
+    }
+  }
+
+  async moveQueueItemsAfterCurrent(
+    mediaPlayer: MediaPlayer,
+    items: MediaPlayerItem[],
+    indices: number[],
+    currentIndex: number,
+    onProgress?: (completed: number) => void,
+    shouldCancel?: () => boolean,
+  ) {
+    // For Music Assistant, use mass_queue.move_queue_item_next for each item
+    if (this.isMusicAssistant(mediaPlayer)) {
+      // Filter out the currently playing item and buffered next item - can't move them
+      const filteredIndices = indices.filter((i) => i !== currentIndex && i !== currentIndex + 1);
+      const reversedForInsert = [...filteredIndices].reverse();
+      let completed = 0;
+      for (const index of reversedForInsert) {
+        if (shouldCancel?.()) {
+          return;
+        }
+        const item = items[index];
+        if (item?.queueItemId) {
+          await this.hassService.musicAssistantService.moveQueueItemNext(mediaPlayer, item.queueItemId);
+        }
+        completed++;
+        onProgress?.(completed);
+      }
+      return;
+    }
+
+    // For Sonos, use the old approach
+    const reversedForInsert = [...indices].reverse();
+    let completed = 0;
+
+    for (const index of reversedForInsert) {
+      if (shouldCancel?.()) {
+        return;
+      }
+      const item = items[index];
+      if (item?.media_content_id) {
+        await this.playMedia(mediaPlayer, item, 'next');
+      }
+      completed++;
+      onProgress?.(completed);
+    }
+
+    const numInserted = indices.length;
+    const reversedIndices = [...indices].reverse();
+    for (const originalIndex of reversedIndices) {
+      if (shouldCancel?.()) {
+        return;
+      }
+      const item = items[originalIndex];
+      const removeIndex = originalIndex > currentIndex ? originalIndex + numInserted : originalIndex;
+      await this.hassService.removeFromQueue(mediaPlayer, removeIndex, item?.queueItemId);
+    }
+  }
+
+  async moveQueueItemsToEnd(
+    mediaPlayer: MediaPlayer,
+    items: MediaPlayerItem[],
+    indices: number[],
+    onProgress?: (completed: number) => void,
+    shouldCancel?: () => boolean,
+  ) {
+    // First, add all items to the end of the queue
+    let completed = 0;
+    for (const index of indices) {
+      if (shouldCancel?.()) {
+        return;
+      }
+      const item = items[index];
+      if (item?.media_content_id) {
+        await this.playMedia(mediaPlayer, item, 'add');
+      }
+      completed++;
+      onProgress?.(completed);
+    }
+
+    // Then remove original positions in reverse order (to preserve indices)
+    const reversedIndices = [...indices].reverse();
+    for (const originalIndex of reversedIndices) {
+      if (shouldCancel?.()) {
+        return;
+      }
+      const item = items[originalIndex];
+      await this.hassService.removeFromQueue(mediaPlayer, originalIndex, item?.queueItemId);
+    }
+  }
+
+  async queueAndPlay(
+    mediaPlayer: MediaPlayer,
+    items: MediaPlayerItem[],
+    enqueueMode: 'replace' | 'play',
+    onProgress?: (completed: number) => void,
+    shouldCancel?: () => boolean,
+  ) {
+    if (items.length === 0) {
+      return;
+    }
+
+    const [firstItem, ...restItems] = items;
+    await this.playMedia(mediaPlayer, firstItem, enqueueMode);
+    onProgress?.(1);
+
+    // Add remaining items in reverse order with 'next' so they appear in correct sequence
+    for (let i = restItems.length - 1; i >= 0; i--) {
+      if (shouldCancel?.()) {
+        return;
+      }
+      await this.playMedia(mediaPlayer, restItems[i], 'next');
+      onProgress?.(restItems.length - i + 1);
+    }
+  }
+
+  // Needed for playing queue items, example:
+  // x-sonos-spotify:spotify%3atrack%3a6KfyfEiMAQJrMhRrP2Epm4?sid=12&flags=8232&sn=2
+  // to
+  // spotify:track:6KfyfEiMAQJrMhRrP2Epm4
+  private transformMediaContentId(id: string): string {
+    if (!id) {
+      return '';
+    }
+    try {
+      const withoutQuery = id.split('?')[0];
+      const decoded = decodeURIComponent(withoutQuery);
+      const colonMatches = decoded.match(/:/g);
+      if (colonMatches && colonMatches.length >= 2) {
+        const firstColonIndex = decoded.indexOf(':');
+        return decoded.substring(firstColonIndex + 1);
+      }
+      return decoded;
+    } catch {
+      return id;
+    }
   }
 
   async seek(mediaPlayer: MediaPlayer, position: number) {

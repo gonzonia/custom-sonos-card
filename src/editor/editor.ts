@@ -1,77 +1,184 @@
-import { css, html, nothing, TemplateResult } from 'lit';
-import { Section } from '../types';
+import { css, html, TemplateResult } from 'lit';
 import { state } from 'lit/decorators.js';
-import { BaseEditor } from './base-editor';
-import { ConfigArea } from './config-area';
 import { choose } from 'lit/directives/choose.js';
-import './advanced-editor';
-import './general-editor';
-import './entities-editor';
-import './predefined-group-editor';
-import './artwork-overrides-editor';
-import './artwork-override-editor';
+import { mdiChevronLeft, mdiChevronRight } from '@mdi/js';
+import { BaseEditor } from './base-editor';
+import { GROUPS_SCHEMA } from './schema/groups-schema';
+import { GROUPING_SCHEMA } from './schema/grouping-schema';
+import { VOLUMES_SCHEMA } from './schema/volumes-schema';
+import { QUEUE_SCHEMA } from './schema/queue-schema';
+import { SEARCH_SCHEMA } from './schema/search-schema';
+import { isQueueSupported } from '../utils/utils';
+import './tabs/common-tab';
+import './tabs/player-tab';
+import './tabs/media-browser-tab';
+import './tabs/section-tab';
 import './form';
-import { isSonosCard } from '../utils/utils';
 
-const { GENERAL, ENTITIES, ADVANCED, ARTWORK } = ConfigArea;
+enum Tab {
+  COMMON = 'Common',
+  PLAYER = 'Player',
+  MEDIA_BROWSER = 'Media Browser',
+  GROUPS = 'Groups',
+  GROUPING = 'Grouping',
+  VOLUMES = 'Volumes',
+  QUEUE = 'Queue',
+  SEARCH = 'Search',
+}
+
 class CardEditor extends BaseEditor {
-  @state() private configArea = GENERAL;
+  @state() private activeTab = Tab.COMMON;
+
+  private get tabs() {
+    return Object.values(Tab).filter((tab) => tab !== Tab.QUEUE || isQueueSupported(this.config));
+  }
+
+  private get activeTabIndex() {
+    return this.tabs.indexOf(this.activeTab);
+  }
+
+  private scrollToActiveTab() {
+    requestAnimationFrame(() => {
+      const container = this.shadowRoot?.querySelector('.tabs-list');
+      const activeButton = this.shadowRoot?.querySelector('.tab-button.active') as HTMLElement;
+      if (container && activeButton) {
+        activeButton.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      }
+    });
+  }
+
+  private navigatePrev = () => {
+    const idx = this.activeTabIndex;
+    if (idx > 0) {
+      this.activeTab = this.tabs[idx - 1];
+      this.scrollToActiveTab();
+    }
+  };
+
+  private navigateNext = () => {
+    const idx = this.activeTabIndex;
+    if (idx < this.tabs.length - 1) {
+      this.activeTab = this.tabs[idx + 1];
+      this.scrollToActiveTab();
+    }
+  };
 
   protected render(): TemplateResult {
-    if (!this.config.sections || this.config.sections.length === 0) {
-      this.config.sections = [Section.PLAYER, Section.VOLUMES, Section.GROUPS, Section.GROUPING, Section.MEDIA_BROWSER];
-      if (isSonosCard(this.config)) {
-        this.config.sections.push(Section.QUEUE);
-      }
+    if (!this.config) {
+      return html``;
     }
+    const tabs = this.tabs;
+    const activeIndex = this.activeTabIndex;
+    const showLeftArrow = activeIndex > 0;
+    const showRightArrow = activeIndex < tabs.length - 1;
 
     return html`
-      <ha-control-button-group>
-        ${[GENERAL, ENTITIES, ARTWORK, ADVANCED].map(
-          (configArea) => html`
-            <ha-control-button
-              selected=${this.configArea === configArea || nothing}
-              @click=${() => (this.configArea = configArea)}
-            >
-              ${configArea}
-            </ha-control-button>
-          `,
-        )}
-      </ha-control-button-group>
-
-      ${this.subEditor()}
+      <div class="tabs-container">
+        <ha-icon-button
+          class="nav-arrow ${showLeftArrow ? '' : 'hidden'}"
+          .path=${mdiChevronLeft}
+          @click=${this.navigatePrev}
+        ></ha-icon-button>
+        <div class="tabs-list">
+          ${tabs.map(
+            (tab) => html`
+              <button
+                class="tab-button ${this.activeTab === tab ? 'active' : ''}"
+                @click=${() => (this.activeTab = tab)}
+              >
+                ${tab}
+              </button>
+            `,
+          )}
+        </div>
+        <ha-icon-button
+          class="nav-arrow ${showRightArrow ? '' : 'hidden'}"
+          .path=${mdiChevronRight}
+          @click=${this.navigateNext}
+        ></ha-icon-button>
+      </div>
+      ${this.renderTabContent()}
     `;
   }
 
-  private subEditor() {
-    return choose(this.configArea, [
+  private renderTabContent() {
+    const c = this.config,
+      h = this.hass;
+    const t = (s: unknown[], sec: string) =>
+      html`<sonos-card-section-tab .schema=${s} .section=${sec} .config=${c} .hass=${h}></sonos-card-section-tab>`;
+    return choose(this.activeTab, [
+      [Tab.COMMON, () => html`<sonos-card-common-tab .config=${c} .hass=${h}></sonos-card-common-tab>`],
+      [Tab.PLAYER, () => html`<sonos-card-player-tab .config=${c} .hass=${h}></sonos-card-player-tab>`],
       [
-        GENERAL,
-        () => html`<sonos-card-general-editor .config=${this.config} .hass=${this.hass}></sonos-card-general-editor>`,
+        Tab.MEDIA_BROWSER,
+        () => html`<sonos-card-media-browser-tab .config=${c} .hass=${h}></sonos-card-media-browser-tab>`,
       ],
-      [
-        ENTITIES,
-        () => html`<sonos-card-entities-editor .config=${this.config} .hass=${this.hass}></sonos-card-entities-editor>`,
-      ],
-      [
-        ADVANCED,
-        () => html`<sonos-card-advanced-editor .config=${this.config} .hass=${this.hass}></sonos-card-advanced-editor>`,
-      ],
-      [
-        ARTWORK,
-        () =>
-          html`<sonos-card-artwork-overrides-editor
-            .config=${this.config}
-            .hass=${this.hass}
-          ></sonos-card-artwork-overrides-editor>`,
-      ],
+      [Tab.GROUPS, () => t(GROUPS_SCHEMA, 'groups')],
+      [Tab.GROUPING, () => t(GROUPING_SCHEMA, 'grouping')],
+      [Tab.VOLUMES, () => t(VOLUMES_SCHEMA, 'volumes')],
+      [Tab.QUEUE, () => t(QUEUE_SCHEMA, 'queue')],
+      [Tab.SEARCH, () => t(SEARCH_SCHEMA, 'search')],
     ]);
   }
 
   static get styles() {
     return css`
-      ha-control-button[selected] {
-        --control-button-background-color: var(--primary-color);
+      :host {
+        display: block;
+      }
+      .tabs-container {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 8px 0 10px;
+        border-bottom: 1px solid var(--divider-color, #e0e0e0);
+      }
+      .tabs-list {
+        display: flex;
+        gap: 4px;
+        overflow-x: auto;
+        flex: 1;
+        scrollbar-width: none;
+        padding-bottom: 2px;
+      }
+      .tabs-list::-webkit-scrollbar {
+        display: none;
+      }
+      .tab-button {
+        height: 32px;
+        border: none;
+        background: transparent;
+        color: var(--primary-text-color);
+        font-size: 14px;
+        cursor: pointer;
+        border-radius: 4px;
+        position: relative;
+        padding: 0 8px;
+        white-space: nowrap;
+      }
+      .tab-button:hover {
+        background: var(--secondary-background-color);
+      }
+      .tab-button.active {
+        color: var(--primary-color);
+      }
+      .tab-button.active::after {
+        content: '';
+        position: absolute;
+        bottom: -3px;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: var(--primary-color);
+      }
+      .nav-arrow {
+        --mdc-icon-button-size: 32px;
+        --mdc-icon-size: 20px;
+        color: var(--primary-color);
+        flex-shrink: 0;
+      }
+      .nav-arrow.hidden {
+        visibility: hidden;
       }
     `;
   }

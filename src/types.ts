@@ -1,5 +1,6 @@
 import { HomeAssistant, LovelaceCardConfig } from 'custom-card-helpers';
 import { MediaPlayer } from './model/media-player';
+import { MediaPlayerItem as UpstreamMediaPlayerItem } from './upstream/data/media-player';
 
 declare global {
   // noinspection JSUnusedGlobalSymbols
@@ -9,12 +10,13 @@ declare global {
 }
 
 export enum Section {
-  MEDIA_BROWSER = 'media browser',
   GROUPS = 'groups',
+  MEDIA_BROWSER = 'media browser',
   PLAYER = 'player',
   GROUPING = 'grouping',
   VOLUMES = 'volumes',
   QUEUE = 'queue',
+  SEARCH = 'search',
 }
 
 export type ConfigPredefinedGroupPlayer = PredefinedGroupPlayer<string>;
@@ -29,96 +31,179 @@ export interface GroupingButtonIcons {
 
 interface SectionButtonIcons {
   player?: string;
-  mediaBrowser?: string;
   groups?: string;
   grouping?: string;
+  mediaBrowser?: string;
   volumes?: string;
   queue?: string;
+  search?: string;
 }
 
 interface StyleConfig {
   borderRadius?: string;
 }
 
+export interface PlayerConfig {
+  artworkAsBackground?: boolean;
+  artworkAsBackgroundBlur?: number;
+  artworkBorderRadius?: number;
+  artworkHostname?: string;
+  artworkMinHeight?: number;
+  backgroundOverlayColor?: string;
+  controlsAndHeaderBackgroundOpacity?: number;
+  controlsColor?: string;
+  controlsLargeIcons?: boolean;
+  controlsMargin?: string;
+  fallbackArtwork?: string;
+  fastForwardAndRewindStepSizeSeconds?: number;
+  headerEntityFontSize?: number;
+  headerSongFontSize?: number;
+  hideArtistAlbum?: boolean;
+  hideArtwork?: boolean;
+  hideControlNextTrackButton?: boolean;
+  hideControlPowerButton?: boolean;
+  hideControlPrevTrackButton?: boolean;
+  hideControlRepeatButton?: boolean;
+  hideControlShuffleButton?: boolean;
+  hideControls?: boolean;
+  hideEntityName?: boolean;
+  hideHeader?: boolean;
+  hidePlaylist?: boolean;
+  hideVolume?: boolean;
+  hideVolumeMuteButton?: boolean;
+  hideVolumePercentage?: boolean;
+  labelWhenNoMediaIsSelected?: string;
+  mediaArtworkOverrides?: MediaArtworkOverride[];
+  showAudioInputFormat?: boolean;
+  showBrowseMediaButton?: boolean;
+  showChannel?: boolean;
+  showFastForwardAndRewindButtons?: boolean;
+  showSource?: boolean;
+  showVolumeUpAndDownButtons?: boolean;
+  stopInsteadOfPause?: boolean;
+  volumeEntityId?: string;
+  volumeMuteButtonSize?: number;
+  volumeSliderHeight?: number;
+}
+
+export interface FavoritesConfig {
+  customFavorites?: CustomFavorites;
+  customThumbnails?: CustomFavoriteThumbnails;
+  customThumbnailsIfMissing?: CustomFavoriteThumbnails;
+  exclude?: string[];
+  hideTitleForThumbnailIcons?: boolean;
+  iconBorder?: string;
+  iconPadding?: number;
+  iconTitleBackgroundColor?: string;
+  iconTitleColor?: string;
+  numberToShow?: number;
+  sortByType?: boolean;
+  title?: string;
+  topItems?: string[];
+  typeColor?: string;
+  typeFontSize?: string;
+  typeFontWeight?: string;
+  typeMarginBottom?: string;
+}
+
+export interface MediaBrowserShortcut {
+  icon?: string;
+  name: string;
+  media_content_id: string;
+  media_content_type: string;
+}
+
+export interface MediaBrowserConfig {
+  favorites?: FavoritesConfig;
+  hideHeader?: boolean;
+  itemsPerRow?: number;
+  onlyFavorites?: boolean;
+  shortcut?: MediaBrowserShortcut;
+}
+
+export interface GroupsConfig {
+  backgroundColor?: string;
+  buttonWidth?: number;
+  compact?: boolean;
+  hideCurrentTrack?: boolean;
+  itemMargin?: string;
+  speakersFontSize?: number;
+  title?: string;
+  titleFontSize?: number;
+}
+
+export interface GroupingConfig {
+  buttonColor?: string;
+  buttonFontSize?: number;
+  buttonIcons?: GroupingButtonIcons;
+  compact?: boolean;
+  disableMainSpeakers?: boolean;
+  dontSortMembersOnTop?: boolean;
+  dontSwitchPlayer?: boolean;
+  hideUngroupAllButtons?: boolean;
+  hideVolumes?: boolean;
+  skipApplyButton?: boolean;
+  title?: string;
+}
+
+export interface VolumesConfig {
+  additionalControlsFontSize?: number;
+  hideCogwheel?: boolean;
+  labelForAllSlider?: string;
+  title?: string;
+}
+
+export interface QueueConfig {
+  itemBackgroundColor?: string;
+  itemTextColor?: string;
+  selectedItemBackgroundColor?: string;
+  selectedItemTextColor?: string;
+  title?: string;
+}
+
 export interface CardConfig extends LovelaceCardConfig {
   style?: StyleConfig;
   sections?: Section[];
   startSection?: Section;
-  hidePlayerControlRepeatButton?: boolean;
-  hidePlayerControlShuffleButton?: boolean;
-  hidePlayerControlNextTrackButton?: boolean;
-  hidePlayerControlPrevTrackButton?: boolean;
-  hidePlayerControlPowerButton?: boolean;
-  showVolumeUpAndDownButtons?: boolean;
-  entityId?: string;
+  // Common
+  adjustVolumeRelativeToMainPlayer?: boolean;
+  allowPlayerVolumeEntityOutsideOfGroup?: boolean;
+  baseFontSize?: number;
+  changeVolumeOnSlide?: boolean;
+  doNotRememberSelectedPlayer?: boolean;
+  dynamicVolumeSlider?: boolean;
+  dynamicVolumeSliderMax?: number;
+  dynamicVolumeSliderThreshold?: number;
   entities?: string[];
-  excludeItemsInEntitiesList?: boolean;
-  predefinedGroups?: ConfigPredefinedGroup[];
-  title?: string;
-  labelWhenNoMediaIsSelected?: string;
-  labelForTheAllVolumesSlider?: string;
+  entitiesToIgnoreVolumeLevelFor?: string[];
+  entityId?: string;
   entityNameRegexToReplace?: string;
   entityNameReplacement?: string;
-  artworkHostname?: string;
-  widthPercentage?: number;
-  heightPercentage?: number;
-  hideGroupCurrentTrack?: boolean;
-  dynamicVolumeSlider?: boolean;
-  mediaArtworkOverrides?: MediaArtworkOverride[];
-  customFavorites?: CustomFavorites;
-  customFavoriteThumbnails?: CustomFavoriteThumbnails;
-  customFavoriteThumbnailsIfMissing?: CustomFavoriteThumbnails;
-  favoritesToIgnore?: string[];
-  favoritesItemsPerRow?: number;
-  favoritesHideTitleForThumbnailIcons?: boolean;
-  topFavorites?: string[];
-  numberOfFavoritesToShow?: number;
-  hideBrowseMediaButton?: boolean;
-  showAudioInputFormat?: boolean;
   entityPlatform?: string;
-  showNonSonosPlayers?: boolean;
-  fallbackArtwork?: string;
-  entitiesToIgnoreVolumeLevelFor?: string[];
-  replaceHttpWithHttpsForThumbnails?: boolean;
-  volumeStepSize?: number;
-  mediaBrowserTitle?: string;
-  queueTitle?: string;
-  adjustVolumeRelativeToMainPlayer?: boolean;
-  skipApplyButtonWhenGrouping?: boolean;
-  hideVolumeCogwheel?: boolean;
-  dynamicVolumeSliderThreshold?: number;
-  dynamicVolumeSliderMax?: number;
-  artworkMinHeight?: number;
-  artworkAsBackground?: boolean;
-  artworkAsBackgroundBlur?: number;
-  playerControlsAndHeaderBackgroundOpacity?: number;
-  playerVolumeEntityId?: string;
-  allowPlayerVolumeEntityOutsideOfGroup?: boolean;
-  dontSwitchPlayerWhenGrouping?: boolean;
-  showSourceInPlayer?: boolean;
-  showBrowseMediaInPlayerSection?: boolean;
-  showChannelInPlayer?: boolean;
-  hidePlaylistInPlayer?: boolean;
-  showFastForwardAndRewindButtons?: boolean;
-  fastForwardAndRewindStepSizeSeconds?: number;
-  groupingButtonIcons?: GroupingButtonIcons;
-  sectionButtonIcons?: SectionButtonIcons;
+  excludeItemsInEntitiesList?: boolean;
+  fontFamily?: string;
   footerHeight?: number;
+  heightPercentage?: number;
+  inverseGroupMuteState?: boolean;
   mediaTitleRegexToReplace?: string;
   mediaTitleReplacement?: string;
-  stopInsteadOfPause?: boolean;
-  inverseGroupMuteState?: boolean;
+  minWidth?: number;
+  predefinedGroups?: ConfigPredefinedGroup[];
+  sectionButtonIconSize?: number;
+  sectionButtonIcons?: SectionButtonIcons;
+  showNonSonosPlayers?: boolean;
   storePlayerInSessionStorage?: boolean;
-  sortFavoritesByType?: boolean;
-  doNotRememberSelectedPlayer?: boolean;
-  groupingDontSortMembersOnTop?: boolean;
-  changeVolumeOnSlide?: boolean;
-  hideMediaBrowserHeader?: boolean;
-  compactGroups?: boolean;
-  compactGrouping?: boolean;
-  groupingDisableMainSpeakers?: boolean;
-  hidePlayerArtwork?: boolean;
-  playerControlsLargeIcons?: boolean;
+  title?: string;
+  volumeStepSize?: number;
+  widthPercentage?: number;
+  // Section configs
+  player?: PlayerConfig;
+  groups?: GroupsConfig;
+  grouping?: GroupingConfig;
+  volumes?: VolumesConfig;
+  queue?: QueueConfig;
+  mediaBrowser?: MediaBrowserConfig;
+  search?: SearchConfig;
 }
 
 export interface MediaArtworkOverride {
@@ -128,6 +213,11 @@ export interface MediaArtworkOverride {
   mediaAlbumNameEquals?: string;
   mediaContentIdEquals?: string;
   mediaChannelEquals?: string;
+  mediaTitleRegexp?: string;
+  mediaArtistRegexp?: string;
+  mediaAlbumNameRegexp?: string;
+  mediaContentIdRegexp?: string;
+  mediaChannelRegexp?: string;
   imageUrl?: string;
   sizePercentage?: number;
 }
@@ -145,17 +235,10 @@ export interface CustomFavoriteThumbnails {
   [title: string]: string;
 }
 
-export interface MediaPlayerItem {
-  can_play?: boolean;
-  can_expand?: boolean;
+export interface MediaPlayerItem extends Partial<UpstreamMediaPlayerItem> {
   title: string;
-  thumbnail?: string;
-  children?: MediaPlayerItem[];
-  children_media_class?: string;
-  media_class?: string;
-  media_content_type?: string;
-  media_content_id?: string;
   favoriteType?: string;
+  queueItemId?: string; // Music Assistant queue item ID for remove/play operations
 }
 
 export interface PredefinedGroup<T = PredefinedGroupPlayer> {
@@ -184,29 +267,6 @@ export interface TemplateResult<T = string[]> {
   result: T;
 }
 
-export enum MediaPlayerEntityFeature {
-  PAUSE = 1,
-  SEEK = 2,
-  VOLUME_SET = 4,
-  VOLUME_MUTE = 8,
-  PREVIOUS_TRACK = 16,
-  NEXT_TRACK = 32,
-
-  TURN_ON = 128,
-  TURN_OFF = 256,
-  PLAY_MEDIA = 512,
-  VOLUME_BUTTONS = 1024,
-  SELECT_SOURCE = 2048,
-  STOP = 4096,
-  CLEAR_PLAYLIST = 8192,
-  PLAY = 16384,
-  SHUFFLE_SET = 32768,
-  SELECT_SOUND_MODE = 65536,
-  BROWSE_MEDIA = 131072,
-  REPEAT_SET = 262144,
-  GROUPING = 524288,
-}
-
 interface HassEntityExtended {
   platform: string;
 }
@@ -228,4 +288,150 @@ export interface QueueItem {
   media_album_name: string;
   media_artist: string;
   media_content_id: string;
+  media_content_type: string;
+}
+
+export interface MusicAssistantQueueItem {
+  queue_item_id: string;
+  name: string;
+  duration: number;
+  media_item: {
+    media_type: string;
+    uri: string;
+    name: string;
+    version: string;
+    image: string | null;
+    favorite: boolean;
+    explicit: boolean;
+    artists?: { name: string }[];
+    album?: {
+      name: string;
+      image: string | null;
+    };
+  };
+}
+
+export interface MusicAssistantQueueResponse {
+  response: {
+    [entity_id: string]: {
+      queue_id: string;
+      active: boolean;
+      name: string;
+      items: number;
+      shuffle_enabled: boolean;
+      repeat_mode: string;
+      current_index: number;
+      elapsed_time: number;
+      current_item: MusicAssistantQueueItem | null;
+      next_item: MusicAssistantQueueItem | null;
+    };
+  };
+}
+
+export interface MusicAssistantQueueItemsResponse {
+  response: {
+    [entity_id: string]: MusicAssistantQueueItem[];
+  };
+}
+
+export interface MassQueueItem {
+  queue_item_id: string;
+  media_title: string;
+  media_album_name: string;
+  media_artist: string;
+  media_content_id: string;
+  media_image: string | null;
+  favorite: boolean;
+}
+
+export interface MassQueueResponse {
+  response: {
+    [entity_id: string]: MassQueueItem[];
+  };
+}
+
+export const MASS_QUEUE_NOT_INSTALLED = 'MASS_QUEUE_NOT_INSTALLED';
+
+export interface QueueSearchMatch {
+  index: number;
+  currentMatch: number;
+  totalMatches: number;
+  matchIndices: number[];
+}
+
+export type SearchMediaType = 'artist' | 'album' | 'track' | 'playlist' | 'radio';
+
+export interface SearchConfig {
+  massConfigEntryId?: string;
+  defaultMediaType?: SearchMediaType;
+  searchLimit?: number;
+  title?: string;
+  autoSearchMinChars?: number;
+  autoSearchDebounceMs?: number;
+}
+
+export interface MusicAssistantSearchResult {
+  media_type: string;
+  name: string;
+  uri: string;
+  version?: string;
+  favorite?: boolean;
+  in_library?: boolean;
+  image?:
+    | string
+    | {
+        path?: string;
+        provider?: string;
+        remotely_accessible?: boolean;
+      };
+  artists?: Array<{
+    name: string;
+    item_id: string;
+  }>;
+  album?: {
+    name: string;
+    item_id: string;
+  };
+  sort_name?: string;
+  item_id: string;
+  provider: string;
+  provider_mappings?: Array<{
+    item_id: string;
+    provider_domain: string;
+    provider_instance: string;
+    url?: string;
+  }>;
+}
+
+export interface MusicAssistantSearchResponse {
+  artists?: MusicAssistantSearchResult[];
+  albums?: MusicAssistantSearchResult[];
+  tracks?: MusicAssistantSearchResult[];
+  playlists?: MusicAssistantSearchResult[];
+  radio?: MusicAssistantSearchResult[];
+}
+
+export interface ConfigEntry {
+  entry_id: string;
+  domain: string;
+  title: string;
+  state: string;
+}
+
+export interface SearchResultItem {
+  title: string;
+  subtitle?: string;
+  uri: string;
+  mediaType: SearchMediaType;
+  imageUrl?: string;
+  favorite?: boolean;
+  inLibrary?: boolean;
+  itemId?: string;
+  provider?: string;
+}
+
+export interface OperationProgress {
+  current: number;
+  total: number;
+  label: string;
 }

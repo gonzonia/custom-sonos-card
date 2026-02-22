@@ -1,10 +1,11 @@
 import { css, html, LitElement } from 'lit';
 import { property } from 'lit/decorators.js';
-import { when } from 'lit/directives/when.js';
+import { styleMap } from 'lit-html/directives/style-map.js';
 import Store from '../model/store';
 import { dispatchActivePlayerId, getSpeakerList } from '../utils/utils';
 import { SESSION_STORAGE_PLAYER_ID } from '../constants';
 import { MediaPlayer } from '../model/media-player';
+import './playing-bars';
 
 class Group extends LitElement {
   @property({ attribute: false }) store!: Store;
@@ -19,35 +20,35 @@ class Group extends LitElement {
   };
 
   render() {
-    const currentTrack = this.store.config.hideGroupCurrentTrack ? '' : this.player.getCurrentTrack();
+    const groupsConfig = this.store.config.groups ?? {};
+    const currentTrack = groupsConfig.hideCurrentTrack ? '' : this.player.getCurrentTrack();
     const speakerList = getSpeakerList(this.player, this.store.predefinedGroups);
     const icons = this.player.members.map((member) => member.attributes.icon).filter((icon) => icon);
+    const { itemMargin, backgroundColor, speakersFontSize, titleFontSize } = groupsConfig;
+    const listItemStyle = styleMap({
+      ...(itemMargin ? { margin: itemMargin } : {}),
+      ...(backgroundColor ? { background: backgroundColor } : {}),
+    });
+    const speakersStyle = styleMap(speakersFontSize ? { fontSize: `${speakersFontSize}rem` } : {});
+    const titleStyle = styleMap(titleFontSize ? { fontSize: `${titleFontSize}rem` } : {});
     return html`
       <mwc-list-item
         hasMeta
-        class=${this.store.config.compactGroups ? 'compact' : ''}
+        class=${groupsConfig.compact ? 'compact' : ''}
         ?selected=${this.selected}
         ?activated=${this.selected}
         @click=${() => this.handleGroupClicked()}
+        style=${listItemStyle}
       >
         <div class="row">
           ${this.renderIcons(icons)}
           <div class="text">
-            <span class="speakers">${speakerList}</span>
-            <span class="song-title">${currentTrack}</span>
+            <span class="speakers" style=${speakersStyle}>${speakerList}</span>
+            <span class="song-title" style=${titleStyle}>${currentTrack}</span>
           </div>
         </div>
 
-        ${when(
-          this.player.isPlaying(),
-          () => html`
-            <div class="bars" slot="meta">
-              <div></div>
-              <div></div>
-              <div></div>
-            </div>
-          `,
-        )}
+        <sonos-playing-bars slot="meta" .show=${this.player.isPlaying()}></sonos-playing-bars>
       </mwc-list-item>
     `;
   }
@@ -88,17 +89,6 @@ class Group extends LitElement {
 
   static get styles() {
     return css`
-      @keyframes sound {
-        0% {
-          opacity: 0.35;
-          height: 0.15rem;
-        }
-        100% {
-          opacity: 1;
-          height: 1rem;
-        }
-      }
-
       mwc-list-item {
         height: fit-content;
         margin: 1rem;
@@ -113,7 +103,7 @@ class Group extends LitElement {
 
       .row {
         display: flex;
-        margin: 1rem 0;
+        margin: 1em 0;
         align-items: center;
       }
 
@@ -125,74 +115,46 @@ class Group extends LitElement {
 
       .speakers {
         white-space: initial;
-        font-size: 1.1rem;
+        font-size: calc(var(--sonos-font-size, 1rem) * 1.1);
         font-weight: bold;
         color: var(--secondary-text-color);
       }
 
       .song-title {
-        font-size: 0.9rem;
+        font-size: calc(var(--sonos-font-size, 1rem) * 0.9);
         font-weight: bold;
       }
 
       .icons {
         text-align: center;
         margin: 0;
-        min-width: 5rem;
-        max-width: 5rem;
+        min-width: 5em;
+        max-width: 5em;
       }
 
       .icons[empty] {
-        min-width: 1rem;
-        max-width: 1rem;
+        min-width: 1em;
+        max-width: 1em;
       }
 
       ha-icon {
-        --mdc-icon-size: 3rem;
-        margin: 1rem;
+        --mdc-icon-size: 3em;
+        margin: 1em;
       }
 
       ha-icon.small {
-        --mdc-icon-size: 2rem;
+        --mdc-icon-size: 2em;
         margin: 0;
       }
 
       .compact ha-icon {
-        --mdc-icon-size: 2rem;
+        --mdc-icon-size: 2em;
       }
       .compact div {
-        margin: 0.1rem;
+        margin: 0.1em;
       }
-
-      .bars {
-        width: 0.55rem;
-        position: relative;
-        margin-left: 1rem;
-      }
-
-      .bars > div {
-        background: var(--secondary-text-color);
-        bottom: 0.05rem;
-        height: 0.15rem;
-        position: absolute;
-        width: 0.15rem;
-        animation: sound 0ms -800ms linear infinite alternate;
-        display: block;
-      }
-
-      .bars > div:first-child {
-        left: 0.05rem;
-        animation-duration: 474ms;
-      }
-
-      .bars > div:nth-child(2) {
-        left: 0.25rem;
-        animation-duration: 433ms;
-      }
-
-      .bars > div:last-child {
-        left: 0.45rem;
-        animation-duration: 407ms;
+      sonos-playing-bars {
+        margin-left: 0.5rem;
       }
     `;
   }

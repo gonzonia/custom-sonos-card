@@ -1,25 +1,30 @@
-import { css, html, LitElement } from 'lit';
+import { css, html, LitElement, nothing } from 'lit';
 import { property } from 'lit/decorators.js';
 import Store from '../model/store';
-import { CardConfig } from '../types';
+import { PlayerConfig } from '../types';
 import { getSpeakerList } from '../utils/utils';
 import { MediaPlayer } from '../model/media-player';
 import { until } from 'lit-html/directives/until.js';
 import { when } from 'lit/directives/when.js';
+import { styleMap } from 'lit/directives/style-map.js';
 
 class PlayerHeader extends LitElement {
   @property({ attribute: false }) store!: Store;
-  private config!: CardConfig;
+  private config!: PlayerConfig;
   private activePlayer!: MediaPlayer;
 
   render() {
-    this.config = this.store.config;
+    this.config = this.store.config.player ?? {};
     this.activePlayer = this.store.activePlayer;
+    const entityStyle = this.config.headerEntityFontSize ? { fontSize: `${this.config.headerEntityFontSize}rem` } : {};
+    const songStyle = this.config.headerSongFontSize ? { fontSize: `${this.config.headerSongFontSize}rem` } : {};
 
     return html` <div class="info">
-      <div class="entity">${getSpeakerList(this.activePlayer, this.store.predefinedGroups)}</div>
-      <div class="song">${this.getSong()}</div>
-      <div class="artist-album">
+      <div class="entity" style=${styleMap(entityStyle)} hide=${this.config.hideEntityName || nothing}>
+        ${getSpeakerList(this.activePlayer, this.store.predefinedGroups)}
+      </div>
+      <div class="song" style=${styleMap(songStyle)}>${this.getSong()}</div>
+      <div class="artist-album" hide=${this.config.hideArtistAlbum || nothing}>
         ${this.getAlbum()} ${when(this.config.showAudioInputFormat, () => until(this.getAudioInputFormat()))}
       </div>
       <sonos-progress .store=${this.store}></sonos-progress>
@@ -29,7 +34,7 @@ class PlayerHeader extends LitElement {
   private getSong() {
     let song = this.activePlayer.getCurrentTrack();
     song = song || this.config.labelWhenNoMediaIsSelected || 'No media selected';
-    if (this.config.showSourceInPlayer && this.activePlayer.attributes.source) {
+    if (this.config.showSource && this.activePlayer.attributes.source) {
       song = `${song} (${this.activePlayer.attributes.source})`;
     }
     return song;
@@ -37,9 +42,9 @@ class PlayerHeader extends LitElement {
 
   private getAlbum() {
     let album = this.activePlayer.attributes.media_album_name;
-    if (this.config.showChannelInPlayer && this.activePlayer.attributes.media_channel) {
+    if (this.config.showChannel && this.activePlayer.attributes.media_channel) {
       album = this.activePlayer.attributes.media_channel;
-    } else if (!this.config.hidePlaylistInPlayer && this.activePlayer.attributes.media_playlist) {
+    } else if (!this.config.hidePlaylist && this.activePlayer.attributes.media_playlist) {
       album = `${this.activePlayer.attributes.media_playlist} - ${album}`;
     }
     return album;
@@ -62,7 +67,7 @@ class PlayerHeader extends LitElement {
       .entity {
         overflow: hidden;
         text-overflow: ellipsis;
-        font-size: 1rem;
+        font-size: var(--sonos-font-size, 1rem);
         font-weight: 500;
         color: var(--secondary-text-color);
         white-space: nowrap;
@@ -71,7 +76,7 @@ class PlayerHeader extends LitElement {
       .song {
         overflow: hidden;
         text-overflow: ellipsis;
-        font-size: 1.15rem;
+        font-size: calc(var(--sonos-font-size, 1rem) * 1.15);
         font-weight: 400;
         color: var(--accent-color);
       }
@@ -79,7 +84,7 @@ class PlayerHeader extends LitElement {
       .artist-album {
         overflow: hidden;
         text-overflow: ellipsis;
-        font-size: 1rem;
+        font-size: var(--sonos-font-size, 1rem);
         font-weight: 300;
         color: var(--secondary-text-color);
       }
@@ -92,6 +97,10 @@ class PlayerHeader extends LitElement {
         line-height: normal;
         padding: 3px;
         margin-left: 8px;
+      }
+
+      *[hide] {
+        display: none;
       }
     `;
   }

@@ -1,0 +1,7 @@
+20260128.6
+Reviewed: 2026-02-15
+Changes applied:
+- brands-url.ts: Removed useFallback option, URL now always uses fallback path (_/)
+- data/media-player.ts: formatMediaTime rewritten to use plain math instead of Date.toISOString()
+- ha-media-player-browse.ts: Removed useFallback property from brandsUrl call (matching upstream removal)
+- No changes in: slugify.ts, media_source.ts, virtualizer.ts

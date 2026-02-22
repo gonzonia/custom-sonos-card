@@ -33,10 +33,12 @@ export class Volumes extends LitElement {
   }
 
   private volumeWithName(player: MediaPlayer, updateMembers = true) {
-    const name = updateMembers ? (this.config.labelForTheAllVolumesSlider ?? 'All') : player.name;
+    const volumesConfig = this.config.volumes ?? {};
+    const playerConfig = this.config.player ?? {};
+    const name = updateMembers ? (volumesConfig.labelForAllSlider ?? 'All') : player.name;
     const volDown = async () => await this.mediaControlService.volumeDown(player, updateMembers);
     const volUp = async () => await this.mediaControlService.volumeUp(player, updateMembers);
-    const noUpDown = !!this.config.showVolumeUpAndDownButtons && nothing;
+    const noUpDown = !!playerConfig.showVolumeUpAndDownButtons && nothing;
     const hideSwitches = updateMembers || !this.showSwitches[player.id];
     return html` <div class="row">
       <div class="volume-name">
@@ -57,7 +59,7 @@ export class Volumes extends LitElement {
           .path=${mdiVolumePlus}
         ></ha-icon-button>
         <ha-icon-button
-          hide=${updateMembers || this.config.hideVolumeCogwheel || nothing}
+          hide=${updateMembers || volumesConfig.hideCogwheel || nothing}
           @click=${() => this.toggleShowSwitches(player)}
           .path=${mdiCog}
           show-switches=${this.showSwitches[player.id] || nothing}
@@ -78,14 +80,15 @@ export class Volumes extends LitElement {
 
   private async getAdditionalControls(hide: boolean, player: MediaPlayer) {
     if (hide) {
-      return;
+      return [];
     }
     const relatedEntities = await this.hassService.getRelatedEntities(player, 'switch', 'number', 'sensor');
     return relatedEntities.map((relatedEntity: HassEntity) => {
       relatedEntity.attributes.friendly_name =
         relatedEntity.attributes.friendly_name?.replaceAll(player.name, '')?.trim() ?? '';
+      const fontSize = this.config.volumes?.additionalControlsFontSize ?? 0.75;
       return html`
-        <div>
+        <div style="--ha-font-size-m: ${fontSize}rem">
           <state-card-content .stateObj=${relatedEntity} .hass=${this.store.hass}></state-card-content>
         </div>
       `;
@@ -129,7 +132,7 @@ export class Volumes extends LitElement {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        font-size: 1.1rem;
+        font-size: calc(var(--sonos-font-size, 1rem) * 1.1);
         font-weight: bold;
         min-height: 1rem;
       }
@@ -148,10 +151,6 @@ export class Volumes extends LitElement {
 
       *[hide] {
         display: none;
-      }
-
-      state-card-content {
-        --ha-font-size-m: 12px;
       }
     `;
   }

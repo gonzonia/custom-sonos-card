@@ -51,9 +51,9 @@ export default class Store {
       [],
     );
     this.activePlayer = this.determineActivePlayer(activePlayerId);
-    this.hassService = new HassService(this.hass, currentSection, card, config);
+    this.hassService = new HassService(this.hass, currentSection, card);
     this.mediaControlService = new MediaControlService(this.hassService, config);
-    this.mediaBrowseService = new MediaBrowseService(this.hassService, config);
+    this.mediaBrowseService = new MediaBrowseService(this.hass, config);
     this.predefinedGroups = this.createPredefinedGroups();
   }
 
@@ -180,6 +180,7 @@ export default class Store {
   private determineActivePlayer(activePlayerId?: string): MediaPlayer {
     const playerId = activePlayerId || this.getActivePlayer() || this.config.entityId;
     return (
+      this.allGroups.find((group) => group.id === playerId) ||
       this.allGroups.find((group) => group.getMember(playerId) !== undefined) ||
       this.allGroups.find((group) => group.isPlaying()) ||
       this.allGroups[0]
@@ -205,7 +206,7 @@ export default class Store {
   }
 
   hidePower(hideIfOn = false) {
-    if (this.config.hidePlayerControlPowerButton) {
+    if (this.config.player?.hideControlPowerButton) {
       return true;
     } else if (!supportsTurnOn(this.activePlayer)) {
       return true;

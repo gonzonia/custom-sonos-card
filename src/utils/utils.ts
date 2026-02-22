@@ -1,10 +1,9 @@
 import { HassEntity } from 'home-assistant-js-websocket';
-import { CardConfig, HomeAssistantWithEntities, MediaPlayerEntityFeature, PredefinedGroup, Section } from '../types';
+import { CardConfig, HomeAssistantWithEntities, PredefinedGroup, Section } from '../types';
+import { MediaPlayerEntityFeature } from '../upstream/data/media-player';
 import { ACTIVE_PLAYER_EVENT, ACTIVE_PLAYER_EVENT_INTERNAL } from '../constants';
 import { MediaPlayer } from '../model/media-player';
 import { GroupingItem } from '../model/grouping-item';
-
-const { TURN_ON } = MediaPlayerEntityFeature;
 
 export function getSpeakerList(mainPlayer: MediaPlayer, predefinedGroups: PredefinedGroup[] = []) {
   const playerIds = mainPlayer.members.map((member) => member.id).sort();
@@ -20,7 +19,8 @@ export function getSpeakerList(mainPlayer: MediaPlayer, predefinedGroups: Predef
       return found.name;
     }
   }
-  return mainPlayer.members.map((member) => member.name).join(' + ');
+  const otherMembers = mainPlayer.members.filter((member) => member.id !== mainPlayer.id);
+  return [mainPlayer.name, ...otherMembers.map((member) => member.name)].join(' + ');
 }
 
 export function dispatchActivePlayerId(playerId: string, config: CardConfig, element: Element) {
@@ -72,7 +72,10 @@ export function getGroupPlayerIds(hassEntity: HassEntity): string[] {
 }
 
 export function supportsTurnOn(player: MediaPlayer) {
-  return ((player.attributes.supported_features || 0) & TURN_ON) == TURN_ON;
+  return (
+    ((player.attributes.supported_features || 0) & MediaPlayerEntityFeature.TURN_ON) ===
+    MediaPlayerEntityFeature.TURN_ON
+  );
 }
 
 export function getGroupingChanges(groupingItems: GroupingItem[], joinedPlayers: string[], activePlayerId: string) {
@@ -131,6 +134,11 @@ export function isSonosCard(config: CardConfig) {
   return config.type.indexOf('sonos') > -1;
 }
 
+export function isQueueSupported(config: CardConfig) {
+  const effectivePlatform = config.entityPlatform ?? (isSonosCard(config) ? 'sonos' : undefined);
+  return effectivePlatform === 'sonos' || effectivePlatform === 'music_assistant';
+}
+
 export function sortEntities(config: CardConfig, filtered: HassEntity[]) {
   if (config.entities) {
     return filtered.sort((a, b) => {
@@ -145,4 +153,8 @@ export function sortEntities(config: CardConfig, filtered: HassEntity[]) {
 
 export function findPlayer(mediaPlayers: MediaPlayer[], playerId: string | undefined) {
   return mediaPlayers.find((member) => member.id === playerId);
+}
+
+export function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

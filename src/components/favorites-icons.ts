@@ -1,34 +1,59 @@
 import { css, html, LitElement, nothing } from 'lit';
 import { property } from 'lit/decorators.js';
 import Store from '../model/store';
-import { CardConfig, MediaPlayerItem } from '../types';
+import { FavoritesConfig, MediaBrowserConfig, MediaPlayerItem } from '../types';
 import { customEvent } from '../utils/utils';
 import { MEDIA_ITEM_SELECTED, mediaItemTitleStyle } from '../constants';
-import { itemsWithFallbacks, renderMediaBrowserItem } from '../utils/media-browser-utils';
+import { itemsWithFallbacks, renderFavoritesItem } from '../utils/media-browse-utils';
 import { styleMap } from 'lit-html/directives/style-map.js';
 
-export class MediaBrowserIcons extends LitElement {
+export class FavoritesIcons extends LitElement {
   @property({ attribute: false }) store!: Store;
   @property({ attribute: false }) items!: MediaPlayerItem[];
-  private config!: CardConfig;
 
   render() {
-    this.config = this.store.config;
+    const mediaBrowserConfig: MediaBrowserConfig = this.store.config.mediaBrowser ?? {};
+    const favoritesConfig: FavoritesConfig = this.store.config.mediaBrowser?.favorites ?? {};
 
-    const items = itemsWithFallbacks(this.items, this.config);
+    const items = itemsWithFallbacks(this.items, this.store.config);
     let prevType: string | undefined = '';
-    this.sortItemsByFavoriteTypeIfConfigured(items);
+    this.sortItemsByFavoriteTypeIfConfigured(items, favoritesConfig);
+    const iconTitleColor = favoritesConfig.iconTitleColor;
+    const iconTitleBgColor = favoritesConfig.iconTitleBackgroundColor;
+    const border = favoritesConfig.iconBorder;
+    const padding = favoritesConfig.iconPadding;
+    const typeColor = favoritesConfig.typeColor;
+    const typeFontSize = favoritesConfig.typeFontSize;
+    const typeFontWeight = favoritesConfig.typeFontWeight;
+    const typeMarginBottom = favoritesConfig.typeMarginBottom;
     return html`
+      <style>
+        ha-control-button {
+          ${border ? `border: ${border};` : ''}
+          ${padding !== undefined ? `--control-button-padding: ${padding}rem;` : ''}
+        }
+        .favorite-type {
+          ${typeColor ? `color: ${typeColor};` : ''}
+          ${typeFontSize ? `font-size: ${typeFontSize};` : ''}
+          ${typeFontWeight ? `font-weight: ${typeFontWeight};` : ''}
+          ${typeMarginBottom ? `margin-bottom: ${typeMarginBottom};` : ''}
+        }
+      </style>
       <div class="icons">
         ${items.map((item) => {
-          const showFavoriteType = (this.config.sortFavoritesByType && item.favoriteType !== prevType) || nothing;
+          const showFavoriteType = (favoritesConfig.sortByType && item.favoriteType !== prevType) || nothing;
           const toRender = html`
             <div class="favorite-type" show=${showFavoriteType}>${item.favoriteType}</div>
             <ha-control-button
-              style=${this.buttonStyle(this.config.favoritesItemsPerRow || 4)}
+              style=${this.buttonStyle(mediaBrowserConfig.itemsPerRow || 4)}
               @click=${() => this.dispatchEvent(customEvent(MEDIA_ITEM_SELECTED, item))}
             >
-              ${renderMediaBrowserItem(item, !item.thumbnail || !this.config.favoritesHideTitleForThumbnailIcons)}
+              ${renderFavoritesItem(
+                item,
+                !item.thumbnail || !favoritesConfig.hideTitleForThumbnailIcons,
+                iconTitleColor,
+                iconTitleBgColor,
+              )}
             </ha-control-button>
           `;
           prevType = item.favoriteType;
@@ -38,8 +63,8 @@ export class MediaBrowserIcons extends LitElement {
     `;
   }
 
-  private sortItemsByFavoriteTypeIfConfigured(items: MediaPlayerItem[]) {
-    if (this.config.sortFavoritesByType) {
+  private sortItemsByFavoriteTypeIfConfigured(items: MediaPlayerItem[], config: FavoritesConfig) {
+    if (config.sortByType) {
       items.sort((a, b) => {
         return a.favoriteType?.localeCompare(b.favoriteType ?? '') || a.title.localeCompare(b.title);
       });
@@ -75,7 +100,7 @@ export class MediaBrowserIcons extends LitElement {
         }
 
         .title {
-          font-size: 0.8rem;
+          font-size: calc(var(--sonos-font-size, 1rem) * 0.8);
           position: absolute;
           width: 100%;
           line-height: 160%;
@@ -85,9 +110,9 @@ export class MediaBrowserIcons extends LitElement {
 
         .favorite-type {
           width: 100%;
-          border-bottom: 1px solid var(--secondary-background-color);
           display: none;
           margin-top: 0.2rem;
+          margin-left: 15px;
           font-weight: bold;
         }
 
@@ -99,4 +124,4 @@ export class MediaBrowserIcons extends LitElement {
   }
 }
 
-customElements.define('sonos-media-browser-icons', MediaBrowserIcons);
+customElements.define('sonos-favorites-icons', FavoritesIcons);

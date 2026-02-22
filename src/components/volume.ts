@@ -2,24 +2,27 @@ import { css, html, LitElement, nothing } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import MediaControlService from '../services/media-control-service';
 import Store from '../model/store';
-import { CardConfig } from '../types';
+import { CardConfig, PlayerConfig } from '../types';
 import { mdiPower, mdiVolumeHigh, mdiVolumeMute } from '@mdi/js';
 import { MediaPlayer } from '../model/media-player';
 
 class Volume extends LitElement {
   @property({ attribute: false }) store!: Store;
   private config!: CardConfig;
+  private playerConfig!: PlayerConfig;
   private mediaControlService!: MediaControlService;
   @property({ attribute: false }) player!: MediaPlayer;
   @property({ type: Boolean }) updateMembers = true;
   @property() volumeClicked?: () => void;
   @property() slim: boolean = false;
+  @property() isPlayer: boolean = false;
   @state() private sliderMoving: boolean = false;
   @state() private startVolumeSliderMoving: number = 0;
   private togglePower = async () => await this.mediaControlService.togglePower(this.player);
 
   render() {
     this.config = this.store.config;
+    this.playerConfig = this.config.player ?? {};
     this.mediaControlService = this.store.mediaControlService;
 
     const volume = this.player.getVolume();
@@ -29,9 +32,25 @@ class Volume extends LitElement {
     const muteIcon = isMuted ? mdiVolumeMute : mdiVolumeHigh;
     const disabled = this.player.ignoreVolume;
 
+    const sliderHeight = this.isPlayer && this.playerConfig.volumeSliderHeight;
+    const muteButtonSize = this.isPlayer && this.playerConfig.volumeMuteButtonSize;
     return html`
+      <style>
+        :host {
+          ${sliderHeight ? `--control-slider-thickness: ${sliderHeight}rem;` : ''}
+          ${muteButtonSize
+          ? `--mdc-icon-button-size: ${muteButtonSize}rem; --mdc-icon-size: ${muteButtonSize * 0.75}rem;`
+          : ''}
+        }
+      </style>
       <div class="volume" slim=${this.slim || nothing}>
-        <ha-icon-button .disabled=${disabled} @click=${this.mute} .path=${muteIcon}> </ha-icon-button>
+        <ha-icon-button
+          .disabled=${disabled}
+          @click=${this.mute}
+          .path=${muteIcon}
+          hide=${(this.isPlayer && this.playerConfig.hideVolumeMuteButton) || nothing}
+        >
+        </ha-icon-button>
         <div class="volume-slider">
           <ha-control-slider
             .value=${volume}
@@ -41,7 +60,7 @@ class Volume extends LitElement {
             .disabled=${disabled}
             class=${this.config.dynamicVolumeSlider && max === 100 ? 'over-threshold' : ''}
           ></ha-control-slider>
-          <div class="volume-level">
+          <div class="volume-level" hide=${(this.isPlayer && this.playerConfig.hideVolumePercentage) || nothing}>
             <div style="flex: ${volume}">${volume > 0 ? '0%' : ''}</div>
             <div class="percentage">${volume}%</div>
             <div style="flex: ${max - volume};text-align: right">${volume < max ? `${max}%` : ''}</div>
@@ -125,7 +144,7 @@ class Volume extends LitElement {
       }
 
       .volume-level {
-        font-size: x-small;
+        font-size: calc(var(--sonos-font-size, 1rem) * 0.75);
         display: flex;
       }
 

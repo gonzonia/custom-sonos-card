@@ -12,9 +12,9 @@ import './components/source';
 import { ACTIVE_PLAYER_EVENT, CALL_MEDIA_DONE, CALL_MEDIA_STARTED } from './constants';
 import { when } from 'lit/directives/when.js';
 import { styleMap } from 'lit-html/directives/style-map.js';
-import { cardDoesNotContainAllSections, getHeight, getWidth, isSonosCard } from './utils/utils';
+import { cardDoesNotContainAllSections, getHeight, getWidth, isQueueSupported, isSonosCard } from './utils/utils';
 
-const { GROUPING, GROUPS, MEDIA_BROWSER, PLAYER, VOLUMES, QUEUE } = Section;
+const { GROUPING, GROUPS, MEDIA_BROWSER, PLAYER, VOLUMES, QUEUE, SEARCH } = Section;
 const TITLE_HEIGHT = 2;
 const FOOTER_HEIGHT = 5;
 
@@ -27,6 +27,7 @@ export class Card extends LitElement {
   @state() loaderTimestamp!: number;
   @state() cancelLoader!: boolean;
   @state() activePlayerId?: string;
+  @state() configError: string | null = null;
 
   render() {
     this.createStore();
@@ -47,6 +48,7 @@ export class Card extends LitElement {
         >
         </div>
         ${title ? html`<div class="title">${title}</div>` : html``}
+        ${this.configError ? html`<div class="no-players">${this.configError}</div>` : html``}
         <div class="content" style=${this.contentStyle(contentHeight)}>
           ${
             this.activePlayerId
@@ -68,20 +70,27 @@ export class Card extends LitElement {
                         @active-player=${this.activePlayerListener}
                       ></sonos-grouping>`,
                   ],
+                  [VOLUMES, () => html` <sonos-volumes .store=${this.store}></sonos-volumes>`],
                   [
                     MEDIA_BROWSER,
-                    () => html`
-                      <sonos-media-browser
+                    () =>
+                      html`<sonos-media-browser
                         .store=${this.store}
                         @item-selected=${this.onMediaItemSelected}
-                      ></sonos-media-browser>
-                    `,
+                      ></sonos-media-browser>`,
                   ],
-                  [VOLUMES, () => html` <sonos-volumes .store=${this.store}></sonos-volumes>`],
                   [
                     QUEUE,
                     () =>
                       html`<sonos-queue .store=${this.store} @item-selected=${this.onMediaItemSelected}></sonos-queue>`,
+                  ],
+                  [
+                    SEARCH,
+                    () =>
+                      html`<sonos-search
+                        .store=${this.store}
+                        @item-selected=${this.onMediaItemSelected}
+                      ></sonos-search>`,
                   ],
                 ])
               : html`<div class="no-players">${noPlayersText}</div>`
@@ -192,14 +201,34 @@ export class Card extends LitElement {
 
   haCardStyle(height: number) {
     const width = getWidth(this.config);
+    const minWidth = this.config.minWidth ?? 20;
     return styleMap({
       color: 'var(--secondary-text-color)',
       height: `${height}rem`,
-      minWidth: `20rem`,
+      minWidth: `${minWidth}rem`,
       maxWidth: `${width}rem`,
       overflow: 'hidden',
       // only set borderRadius if this.config.style.borderRadius is set, otherwise the card looks weird with box-shadow
       ...(this.config.style?.borderRadius ? { borderRadius: this.config.style.borderRadius } : {}),
+      ...(this.config.baseFontSize
+        ? {
+            fontSize: `${this.config.baseFontSize}rem`,
+            '--sonos-font-size': `${this.config.baseFontSize}rem`,
+            '--ha-font-size-s': '0.75em',
+            '--ha-font-size-m': '0.875em',
+            '--ha-font-size-l': '1em',
+            '--ha-font-size-xl': '1.125em',
+            '--ha-font-size-2xl': '1.25em',
+            '--ha-font-size-4xl': '1.5em',
+          }
+        : {}),
+      ...(this.config.fontFamily
+        ? {
+            fontFamily: this.config.fontFamily,
+            '--mdc-typography-font-family': this.config.fontFamily,
+            '--ha-font-family-body': this.config.fontFamily,
+          }
+        : {}),
     });
   }
 
@@ -224,8 +253,8 @@ export class Card extends LitElement {
         delete newConfig[key];
       }
     }
-    const sections =
-      newConfig.sections || Object.values(Section).filter((section) => isSonosCard(newConfig) || section !== QUEUE);
+    const showQueue = isQueueSupported(newConfig);
+    const sections = newConfig.sections || Object.values(Section).filter((section) => showQueue || section !== QUEUE);
     if (newConfig.startSection && sections.includes(newConfig.startSection)) {
       this.section = newConfig.startSection;
     } else if (sections) {
@@ -237,38 +266,42 @@ export class Card extends LitElement {
             ? GROUPS
             : sections.includes(GROUPING)
               ? GROUPING
-              : sections.includes(QUEUE) && isSonosCard(newConfig)
-                ? QUEUE
-                : VOLUMES;
+              : sections.includes(SEARCH)
+                ? SEARCH
+                : sections.includes(QUEUE) && showQueue
+                  ? QUEUE
+                  : VOLUMES;
     } else {
       this.section = PLAYER;
     }
 
-    newConfig.favoritesItemsPerRow = newConfig.favoritesItemsPerRow || 4;
+    newConfig.mediaBrowser = newConfig.mediaBrowser ?? {};
+    newConfig.mediaBrowser.favorites = newConfig.mediaBrowser.favorites ?? {};
+    newConfig.mediaBrowser.itemsPerRow = newConfig.mediaBrowser.itemsPerRow || 4;
     // support custom:auto-entities
     if (newConfig.entities?.length && newConfig.entities[0].entity) {
       newConfig.entities = newConfig.entities.map((entity: { entity: string }) => entity.entity);
     }
-    if (isSonosCard(newConfig)) {
+    if (isSonosCard(newConfig) && newConfig.entityPlatform === undefined) {
       newConfig.entityPlatform = 'sonos';
       if (newConfig.showNonSonosPlayers) {
         newConfig.entityPlatform = undefined;
       }
     }
-    // handle deprecated config
-    if (newConfig.customSources) {
-      newConfig.customFavorites = newConfig.customSources;
-    }
-    if (newConfig.customThumbnail) {
-      newConfig.customFavoriteThumbnails = newConfig.customThumbnail;
-    }
-    if (newConfig.customThumbnailIfMissing) {
-      newConfig.customFavoriteThumbnailsIfMissing = newConfig.customThumbnailIfMissing;
-    }
-    if (newConfig.mediaBrowserItemsPerRow) {
-      newConfig.favoritesItemsPerRow = newConfig.mediaBrowserItemsPerRow;
-    }
+    this.configError = this.getConfigError(newConfig);
     this.config = newConfig;
+  }
+
+  private getConfigError(config: CardConfig): string | null {
+    const isMusicAssistant = config.entityPlatform === 'music_assistant';
+    const hasShowNonSonos = !!config.showNonSonosPlayers;
+    const hasOtherPlatform =
+      !!config.entityPlatform && config.entityPlatform !== 'music_assistant' && config.entityPlatform !== 'sonos';
+    const activeCount = [isMusicAssistant, hasShowNonSonos, hasOtherPlatform].filter(Boolean).length;
+    if (activeCount > 1) {
+      return 'Conflicting configuration: only one of useMusicAssistant, showNonSonosPlayers, or entityPlatform can be set at a time. Please fix your configuration.';
+    }
+    return null;
   }
 
   static get styles() {
@@ -292,7 +325,7 @@ export class Card extends LitElement {
         margin: 0.4rem 0;
         text-align: center;
         font-weight: bold;
-        font-size: 1.2rem;
+        font-size: calc(var(--sonos-font-size, 1rem) * 1.2);
         color: var(--secondary-text-color);
       }
       .no-players {
