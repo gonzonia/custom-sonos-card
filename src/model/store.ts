@@ -128,10 +128,9 @@ export default class Store {
     const hassWithEntities = hass as HomeAssistantWithEntities;
     const filtered = Object.values(hass.states).filter((hassEntity) => {
       if (hassEntity.entity_id.includes('media_player')) {
-        // Always include the playerVolumeEntityId if allowPlayerVolumeEntityOutsideOfGroup is set
         if (
           this.config.allowPlayerVolumeEntityOutsideOfGroup &&
-          hassEntity.entity_id === this.config.playerVolumeEntityId
+          hassEntity.entity_id === this.config.player?.volumeEntityId
         ) {
           return true;
         }
